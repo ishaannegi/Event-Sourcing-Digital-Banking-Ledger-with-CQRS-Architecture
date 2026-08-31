@@ -1,0 +1,7 @@
+CREATE TABLE account_balances (
+    account_id VARCHAR(255) PRIMARY KEY,
+    owner_name VARCHAR(255) NOT NULL,
+    balance NUMERIC(19, 4) NOT NULL DEFAULT 0,
+    last_applied_version BIGINT NOT NULL DEFAULT 0,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
+);

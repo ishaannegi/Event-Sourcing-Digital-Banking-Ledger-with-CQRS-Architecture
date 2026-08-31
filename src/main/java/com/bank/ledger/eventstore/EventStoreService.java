@@ -1,6 +1,7 @@
 package com.bank.ledger.eventstore;
 
 import com.bank.ledger.events.DomainEvent;
+import com.bank.ledger.events.KafkaEventProducer;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -16,10 +17,12 @@ public class EventStoreService {
 
     private final EventStoreRepository eventStoreRepository;
     private final ObjectMapper objectMapper;
+    private final KafkaEventProducer kafkaEventProducer;
 
-    public EventStoreService(EventStoreRepository eventStoreRepository, ObjectMapper objectMapper) {
+    public EventStoreService(EventStoreRepository eventStoreRepository, ObjectMapper objectMapper, KafkaEventProducer kafkaEventProducer) {
         this.eventStoreRepository = eventStoreRepository;
         this.objectMapper = objectMapper;
+        this.kafkaEventProducer = kafkaEventProducer;
     }
 
     public List<DomainEvent> loadEventStream(String aggregateId) {
@@ -72,8 +75,18 @@ public class EventStoreService {
         }
 
         try {
-            eventStoreRepository.saveAll(entitiesToSave);
+            List<EventEntity> savedEntities = eventStoreRepository.saveAll(entitiesToSave);
             eventStoreRepository.flush();
+
+            // After successful event store commit, publish events to Kafka
+            for (EventEntity saved : savedEntities) {
+                kafkaEventProducer.publishEvent(
+                        saved.getAggregateId(),
+                        saved.getEventType(),
+                        saved.getPayload(),
+                        saved.getVersion()
+                );
+            }
         } catch (DataIntegrityViolationException e) {
             throw new OptimisticLockingException(
                     "Concurrent modification detected for aggregate [" + aggregateId + "]: unique constraint (aggregate_id, version) violated.");

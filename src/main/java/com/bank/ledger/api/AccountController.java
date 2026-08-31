@@ -3,6 +3,7 @@ package com.bank.ledger.api;
 import com.bank.ledger.command.AccountAggregate;
 import com.bank.ledger.command.AccountCommandHandler;
 import com.bank.ledger.command.Commands;
+import com.bank.ledger.readmodel.AccountBalanceRepository;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -18,9 +19,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class AccountController {
 
     private final AccountCommandHandler commandHandler;
+    private final AccountBalanceRepository accountBalanceRepository;
 
-    public AccountController(AccountCommandHandler commandHandler) {
+    public AccountController(AccountCommandHandler commandHandler, AccountBalanceRepository accountBalanceRepository) {
         this.commandHandler = commandHandler;
+        this.accountBalanceRepository = accountBalanceRepository;
     }
 
     @PostMapping
@@ -87,6 +90,9 @@ public class AccountController {
         return ResponseEntity.ok(response);
     }
 
+    /**
+     * Source of Truth Query Endpoint (Event Replay Path)
+     */
     @GetMapping("/{id}")
     public ResponseEntity<DTOs.AccountResponse> getAccount(@PathVariable("id") String accountId) {
         AccountAggregate aggregate = commandHandler.loadAggregate(accountId);
@@ -100,5 +106,21 @@ public class AccountController {
                 aggregate.getVersion()
         );
         return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Fast Path CQRS Read Model Query Endpoint (Reads directly from account_balances table)
+     */
+    @GetMapping("/{id}/balance-view")
+    public ResponseEntity<DTOs.AccountResponse> getAccountBalanceView(@PathVariable("id") String accountId) {
+        return accountBalanceRepository.findById(accountId)
+                .map(entity -> new DTOs.AccountResponse(
+                        entity.getAccountId(),
+                        entity.getOwnerName(),
+                        entity.getBalance(),
+                        entity.getLastAppliedVersion()
+                ))
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
     }
 }
