@@ -4,7 +4,10 @@ import com.bank.ledger.command.AccountAggregate;
 import com.bank.ledger.command.AccountCommandHandler;
 import com.bank.ledger.command.Commands;
 import com.bank.ledger.readmodel.AccountBalanceRepository;
+import com.bank.ledger.readmodel.AccountCacheService;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -14,16 +17,24 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.Optional;
+
 @RestController
 @RequestMapping("/accounts")
 public class AccountController {
 
+    private static final Logger log = LoggerFactory.getLogger(AccountController.class);
+
     private final AccountCommandHandler commandHandler;
     private final AccountBalanceRepository accountBalanceRepository;
+    private final AccountCacheService accountCacheService;
 
-    public AccountController(AccountCommandHandler commandHandler, AccountBalanceRepository accountBalanceRepository) {
+    public AccountController(AccountCommandHandler commandHandler,
+                             AccountBalanceRepository accountBalanceRepository,
+                             AccountCacheService accountCacheService) {
         this.commandHandler = commandHandler;
         this.accountBalanceRepository = accountBalanceRepository;
+        this.accountCacheService = accountCacheService;
     }
 
     @PostMapping
@@ -109,17 +120,33 @@ public class AccountController {
     }
 
     /**
-     * Fast Path CQRS Read Model Query Endpoint (Reads directly from account_balances table)
+     * Fast Path CQRS Read Model Query Endpoint (Cache-Aside Pattern)
+     * 1. Check Redis Cache
+     * 2. On Miss: Fall back to PostgreSQL account_balances, populate Redis, and return.
      */
     @GetMapping("/{id}/balance-view")
     public ResponseEntity<DTOs.AccountResponse> getAccountBalanceView(@PathVariable("id") String accountId) {
+        // 1. Check Redis Cache (Cache-Aside)
+        Optional<DTOs.AccountResponse> cachedResponse = accountCacheService.get(accountId);
+        if (cachedResponse.isPresent()) {
+            log.info("[CACHE HIT] Serving account [{}] from Redis cache", accountId);
+            return ResponseEntity.ok(cachedResponse.get());
+        }
+
+        // 2. Cache Miss: Fall back to PostgreSQL Read Model
+        log.info("[CACHE MISS] Querying PostgreSQL account_balances for account [{}]", accountId);
         return accountBalanceRepository.findById(accountId)
-                .map(entity -> new DTOs.AccountResponse(
-                        entity.getAccountId(),
-                        entity.getOwnerName(),
-                        entity.getBalance(),
-                        entity.getLastAppliedVersion()
-                ))
+                .map(entity -> {
+                    DTOs.AccountResponse response = new DTOs.AccountResponse(
+                            entity.getAccountId(),
+                            entity.getOwnerName(),
+                            entity.getBalance(),
+                            entity.getLastAppliedVersion()
+                    );
+                    // Populate Redis cache on miss
+                    accountCacheService.put(accountId, response);
+                    return response;
+                })
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }

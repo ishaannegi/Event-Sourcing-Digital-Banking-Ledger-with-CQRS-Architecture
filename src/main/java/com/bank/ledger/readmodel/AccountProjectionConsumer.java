@@ -1,5 +1,6 @@
 package com.bank.ledger.readmodel;
 
+import com.bank.ledger.api.DTOs;
 import com.bank.ledger.events.AccountOpenedEvent;
 import com.bank.ledger.events.DomainEvent;
 import com.bank.ledger.events.FundsDepositedEvent;
@@ -24,10 +25,12 @@ public class AccountProjectionConsumer {
 
     private final AccountBalanceRepository repository;
     private final ObjectMapper objectMapper;
+    private final AccountCacheService accountCacheService;
 
-    public AccountProjectionConsumer(AccountBalanceRepository repository, ObjectMapper objectMapper) {
+    public AccountProjectionConsumer(AccountBalanceRepository repository, ObjectMapper objectMapper, AccountCacheService accountCacheService) {
         this.repository = repository;
         this.objectMapper = objectMapper;
+        this.accountCacheService = accountCacheService;
     }
 
     @KafkaListener(topics = KafkaTopicConfig.LEDGER_EVENTS_TOPIC, groupId = "${spring.kafka.consumer.group-id:ledger-group}")
@@ -62,7 +65,9 @@ public class AccountProjectionConsumer {
                         aggregateId, version, lastAppliedVersion + 1);
             }
 
-            // 3. Apply Projection Update
+            // 3. Apply Projection Update & Perform Write-Through to Redis Cache
+            AccountBalanceEntity savedEntity = null;
+
             if (event instanceof AccountOpenedEvent e) {
                 AccountBalanceEntity entity = new AccountBalanceEntity(
                         e.getAccountId(),
@@ -71,7 +76,7 @@ public class AccountProjectionConsumer {
                         version,
                         Instant.now()
                 );
-                repository.save(entity);
+                savedEntity = repository.save(entity);
                 log.info("Projection: Opened account [{}] with initial balance [{}] (version {})",
                         e.getAccountId(), e.getInitialBalance(), version);
             } else if (event instanceof FundsDepositedEvent e) {
@@ -80,7 +85,7 @@ public class AccountProjectionConsumer {
                 entity.setBalance(entity.getBalance().add(e.getAmount()));
                 entity.setLastAppliedVersion(version);
                 entity.setUpdatedAt(Instant.now());
-                repository.save(entity);
+                savedEntity = repository.save(entity);
                 log.info("Projection: Deposited [{}] to account [{}], new balance [{}] (version {})",
                         e.getAmount(), aggregateId, entity.getBalance(), version);
             } else if (event instanceof FundsWithdrawnEvent e) {
@@ -89,9 +94,20 @@ public class AccountProjectionConsumer {
                 entity.setBalance(entity.getBalance().subtract(e.getAmount()));
                 entity.setLastAppliedVersion(version);
                 entity.setUpdatedAt(Instant.now());
-                repository.save(entity);
+                savedEntity = repository.save(entity);
                 log.info("Projection: Withdrew [{}] from account [{}], new balance [{}] (version {})",
                         e.getAmount(), aggregateId, entity.getBalance(), version);
+            }
+
+            // Perform Write-Through Cache Update to Redis
+            if (savedEntity != null) {
+                DTOs.AccountResponse cacheDto = new DTOs.AccountResponse(
+                        savedEntity.getAccountId(),
+                        savedEntity.getOwnerName(),
+                        savedEntity.getBalance(),
+                        savedEntity.getLastAppliedVersion()
+                );
+                accountCacheService.put(savedEntity.getAccountId(), cacheDto);
             }
         } catch (Exception e) {
             log.error("Failed to project Kafka record for aggregate [{}]: {}", aggregateId, e.getMessage(), e);
