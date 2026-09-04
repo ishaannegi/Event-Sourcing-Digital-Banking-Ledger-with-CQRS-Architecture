@@ -35,6 +35,11 @@ public class KafkaEventProducer {
             record.headers().add("event_type", eventType.getBytes(StandardCharsets.UTF_8));
             record.headers().add("version", String.valueOf(version).getBytes(StandardCharsets.UTF_8));
 
+            String correlationId = org.slf4j.MDC.get("correlationId");
+            if (correlationId != null) {
+                record.headers().add("correlation_id", correlationId.getBytes(StandardCharsets.UTF_8));
+            }
+
             kafkaTemplate.send(record).whenComplete((result, ex) -> {
                 if (ex != null) {
                     log.error("Failed to publish event [{}] for aggregate [{}] version [{}]: {}",

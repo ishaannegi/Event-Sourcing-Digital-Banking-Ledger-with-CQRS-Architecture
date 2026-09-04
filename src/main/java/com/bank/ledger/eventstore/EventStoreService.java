@@ -4,6 +4,8 @@ import com.bank.ledger.events.DomainEvent;
 import com.bank.ledger.events.KafkaEventProducer;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,6 +17,7 @@ import java.util.List;
 @Service
 public class EventStoreService {
 
+    private static final Logger log = LoggerFactory.getLogger(EventStoreService.class);
     private final EventStoreRepository eventStoreRepository;
     private final ObjectMapper objectMapper;
     private final KafkaEventProducer kafkaEventProducer;
@@ -49,10 +52,15 @@ public class EventStoreService {
     public void appendEvents(String aggregateId, long expectedVersion, List<DomainEvent> events) {
         long currentVersion = getLatestVersion(aggregateId);
         if (currentVersion != expectedVersion) {
+            log.warn("Optimistic lock failure for aggregate [{}]: expected version {} but found {}",
+                    aggregateId, expectedVersion, currentVersion);
             throw new OptimisticLockingException(
                     "Optimistic lock failure for aggregate [" + aggregateId + "]: expected version " 
                     + expectedVersion + " but found version " + currentVersion);
         }
+
+        log.info("Appending {} event(s) to event store for aggregate [{}] starting at version {}",
+                events.size(), aggregateId, expectedVersion + 1);
 
         long nextVersion = expectedVersion;
         List<EventEntity> entitiesToSave = new ArrayList<>();

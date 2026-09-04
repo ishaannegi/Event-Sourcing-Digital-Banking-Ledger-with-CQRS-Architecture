@@ -6,6 +6,8 @@ import com.bank.ledger.events.FundsDepositedEvent;
 import com.bank.ledger.events.FundsWithdrawnEvent;
 import com.bank.ledger.events.TransferInitiatedEvent;
 import com.bank.ledger.eventstore.EventStoreService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,6 +19,7 @@ import java.util.UUID;
 @Service
 public class AccountCommandHandler {
 
+    private static final Logger log = LoggerFactory.getLogger(AccountCommandHandler.class);
     private final EventStoreService eventStoreService;
 
     public AccountCommandHandler(EventStoreService eventStoreService) {
@@ -26,6 +29,8 @@ public class AccountCommandHandler {
     @Transactional
     public String handle(Commands.OpenAccountCommand cmd) {
         String accountId = UUID.randomUUID().toString();
+        log.info("Handling OpenAccountCommand for owner [{}] with initial balance [{}] -> assigned accountId [{}]",
+                cmd.ownerName(), cmd.initialBalance(), accountId);
         AccountAggregate aggregate = loadAggregate(accountId);
         AccountOpenedEvent event = aggregate.createAccount(accountId, cmd.ownerName(), cmd.initialBalance());
 
@@ -35,6 +40,7 @@ public class AccountCommandHandler {
 
     @Transactional
     public void handle(Commands.DepositCommand cmd) {
+        log.info("Handling DepositCommand for account [{}] with amount [{}]", cmd.accountId(), cmd.amount());
         AccountAggregate aggregate = loadAggregate(cmd.accountId());
         FundsDepositedEvent event = aggregate.deposit(cmd.amount());
 
@@ -43,6 +49,7 @@ public class AccountCommandHandler {
 
     @Transactional
     public void handle(Commands.WithdrawCommand cmd) {
+        log.info("Handling WithdrawCommand for account [{}] with amount [{}]", cmd.accountId(), cmd.amount());
         AccountAggregate aggregate = loadAggregate(cmd.accountId());
         FundsWithdrawnEvent event = aggregate.withdraw(cmd.amount());
 
@@ -51,6 +58,8 @@ public class AccountCommandHandler {
 
     @Transactional
     public String handle(Commands.TransferCommand cmd) {
+        log.info("Handling TransferCommand from [{}] to [{}] for amount [{}]",
+                cmd.fromAccountId(), cmd.toAccountId(), cmd.amount());
         if (cmd.fromAccountId() == null || cmd.toAccountId() == null) {
             throw new InvalidCommandException("Source and destination account IDs cannot be null.");
         }

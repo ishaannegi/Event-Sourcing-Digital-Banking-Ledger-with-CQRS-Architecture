@@ -41,6 +41,11 @@ public class AccountProjectionConsumer {
 
         String eventType = getHeader(record, "event_type");
         Long version = getHeaderAsLong(record, "version");
+        String correlationId = getHeader(record, "correlation_id");
+
+        if (correlationId != null) {
+            org.slf4j.MDC.put("correlationId", correlationId);
+        }
 
         try {
             DomainEvent event = objectMapper.readValue(payload, DomainEvent.class);
@@ -111,6 +116,8 @@ public class AccountProjectionConsumer {
             }
         } catch (Exception e) {
             log.error("Failed to project Kafka record for aggregate [{}]: {}", aggregateId, e.getMessage(), e);
+        } finally {
+            org.slf4j.MDC.remove("correlationId");
         }
     }
 
