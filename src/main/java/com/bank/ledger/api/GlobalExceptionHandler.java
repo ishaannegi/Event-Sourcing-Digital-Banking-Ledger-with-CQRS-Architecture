@@ -76,6 +76,28 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(error);
     }
 
+    @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
+    public ResponseEntity<DTOs.ErrorResponse> handleAccessDenied(org.springframework.security.access.AccessDeniedException ex) {
+        DTOs.ErrorResponse error = new DTOs.ErrorResponse(
+                HttpStatus.FORBIDDEN.value(),
+                "Forbidden",
+                ex.getMessage(),
+                System.currentTimeMillis()
+        );
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(error);
+    }
+
+    @ExceptionHandler({org.springframework.security.authentication.BadCredentialsException.class, org.springframework.security.core.AuthenticationException.class})
+    public ResponseEntity<DTOs.ErrorResponse> handleAuthenticationError(RuntimeException ex) {
+        DTOs.ErrorResponse error = new DTOs.ErrorResponse(
+                HttpStatus.UNAUTHORIZED.value(),
+                "Unauthorized",
+                ex.getMessage(),
+                System.currentTimeMillis()
+        );
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(error);
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<DTOs.ErrorResponse> handleGeneralException(Exception ex) {
         DTOs.ErrorResponse error = new DTOs.ErrorResponse(

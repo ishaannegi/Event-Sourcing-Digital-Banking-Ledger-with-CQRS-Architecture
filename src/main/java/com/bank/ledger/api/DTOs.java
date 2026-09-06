@@ -41,6 +41,16 @@ public class DTOs {
             BigDecimal amount
     ) {}
 
+    public record LoginRequest(
+            @NotBlank(message = "Username is required")
+            String username,
+
+            @NotBlank(message = "Password is required")
+            String password
+    ) {}
+
+    public record LoginResponse(String token, String username, String role) {}
+
     public record AccountResponse(String accountId, String ownerName, BigDecimal balance, long version) {}
     public record TransferResponse(String transferId, String fromAccountId, String toAccountId, BigDecimal amount, String status) {}
     public record ErrorResponse(int status, String error, String message, long timestamp) {}
