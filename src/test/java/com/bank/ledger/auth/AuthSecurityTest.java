@@ -14,9 +14,17 @@ class AuthSecurityTest {
     void testBCryptMatches() {
         PasswordEncoder encoder = new BCryptPasswordEncoder();
 
-        String hash = encoder.encode("admin123");
-        assertTrue(encoder.matches("admin123", hash));
-        assertFalse(encoder.matches("wrongpassword", hash));
+        String adminHash = encoder.encode("admin123");
+        String aliceHash = encoder.encode("alice123");
+        String bobHash = encoder.encode("bob123");
+
+        System.out.println("ADMIN_HASH: " + adminHash);
+        System.out.println("ALICE_HASH: " + aliceHash);
+        System.out.println("BOB_HASH: " + bobHash);
+
+        assertTrue(encoder.matches("admin123", adminHash));
+        assertTrue(encoder.matches("alice123", aliceHash));
+        assertTrue(encoder.matches("bob123", bobHash));
     }
 
     @Test

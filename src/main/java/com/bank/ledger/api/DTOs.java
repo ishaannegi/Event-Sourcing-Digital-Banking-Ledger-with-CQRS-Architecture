@@ -51,6 +51,24 @@ public class DTOs {
 
     public record LoginResponse(String token, String username, String role) {}
 
+    public record HistoricalBalanceResponse(
+            String accountId,
+            String ownerName,
+            BigDecimal balance,
+            long version,
+            java.time.Instant asOfTimestamp,
+            int eventsReplayedCount
+    ) {}
+
+    public record RegulatoryReportResponse(
+            java.time.Instant from,
+            java.time.Instant to,
+            long totalTransactions,
+            BigDecimal totalVolume,
+            java.util.Map<String, Long> accountTransactionCounts,
+            java.time.Instant reportGeneratedAt
+    ) {}
+
     public record AccountResponse(String accountId, String ownerName, BigDecimal balance, long version) {}
     public record TransferResponse(String transferId, String fromAccountId, String toAccountId, BigDecimal amount, String status) {}
     public record ErrorResponse(int status, String error, String message, long timestamp) {}
