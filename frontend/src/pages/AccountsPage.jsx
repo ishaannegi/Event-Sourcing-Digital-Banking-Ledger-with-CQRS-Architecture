@@ -5,7 +5,8 @@ import {
   openAccountApi,
   depositApi,
   withdrawApi,
-  transferApi
+  transferApi,
+  setAuthToken
 } from '../services/api';
 import {
   CreditCard,
@@ -19,14 +20,45 @@ import {
   AlertTriangle,
   CheckCircle2,
   X,
-  Search,
   Wallet,
   ShieldCheck,
   Layers
 } from 'lucide-react';
 
+const getKnownAccountIds = (user) => {
+  try {
+    const rawUser = localStorage.getItem(`ledger_accounts_${user}`);
+    const userIds = rawUser ? JSON.parse(rawUser) : [];
+    const rawGlobal = localStorage.getItem('ledger_known_accounts');
+    const globalIds = rawGlobal ? JSON.parse(rawGlobal) : [];
+    return Array.from(new Set([...userIds, ...globalIds]));
+  } catch (e) {
+    return [];
+  }
+};
+
+const saveKnownAccountId = (accountId, user) => {
+  if (!accountId) return;
+  try {
+    const rawUser = localStorage.getItem(`ledger_accounts_${user}`);
+    const userIds = rawUser ? JSON.parse(rawUser) : [];
+    if (!userIds.includes(accountId)) {
+      userIds.push(accountId);
+      localStorage.setItem(`ledger_accounts_${user}`, JSON.stringify(userIds));
+    }
+    const rawGlobal = localStorage.getItem('ledger_known_accounts');
+    const globalIds = rawGlobal ? JSON.parse(rawGlobal) : [];
+    if (!globalIds.includes(accountId)) {
+      globalIds.push(accountId);
+      localStorage.setItem('ledger_known_accounts', JSON.stringify(globalIds));
+    }
+  } catch (e) {
+    console.error('Failed to save account ID to localStorage', e);
+  }
+};
+
 export default function AccountsPage() {
-  const { username, role } = useAuth();
+  const { username, role, token } = useAuth();
   const isAdmin = role === 'ADMIN' || role === 'ROLE_ADMIN';
 
   // Accounts state map keyed by accountId
@@ -34,9 +66,6 @@ export default function AccountsPage() {
   const [loading, setLoading] = useState(false);
   const [globalError, setGlobalError] = useState(null);
   const [globalSuccess, setGlobalSuccess] = useState(null);
-
-  // Lookup / Search input
-  const [lookupIdInput, setLookupIdInput] = useState('');
 
   // Copy to clipboard state
   const [copiedId, setCopiedId] = useState(null);
@@ -88,13 +117,22 @@ export default function AccountsPage() {
     }
   };
 
-  const handleLookupSubmit = (e) => {
-    e.preventDefault();
-    if (!lookupIdInput.trim()) return;
-    fetchAccount(lookupIdInput.trim())
-      .then(() => setLookupIdInput(''))
-      .catch(() => {});
-  };
+  // Auto-sync token and auto-fetch all known accounts for current session on mount
+  useEffect(() => {
+    if (token) {
+      setAuthToken(token);
+    }
+
+    const knownIds = getKnownAccountIds(username);
+    if (knownIds.length > 0) {
+      setLoading(true);
+      Promise.all(
+        knownIds.map(id => fetchAccount(id, true).catch(() => null))
+      ).finally(() => {
+        setLoading(false);
+      });
+    }
+  }, [username, token]);
 
   // Copy helper
   const handleCopy = (text) => {
@@ -114,6 +152,8 @@ export default function AccountsPage() {
         isAdmin ? openOwnerName : username,
         parseFloat(openInitialBalance)
       );
+
+      saveKnownAccountId(newAcc.accountId, username);
 
       setAccountsMap(prev => ({
         ...prev,
@@ -183,6 +223,10 @@ export default function AccountsPage() {
     try {
       await transferApi(modalAccountId, transferToId.trim(), parseFloat(transferAmount));
 
+      if (transferToId.trim()) {
+        saveKnownAccountId(transferToId.trim(), username);
+      }
+
       // Refresh both source and destination accounts
       await fetchAccount(modalAccountId, true).catch(() => {});
       if (transferToId.trim()) {
@@ -217,18 +261,36 @@ export default function AccountsPage() {
           <p className="dashboard-subtext">CQRS Fast Read Model & Real-Time Transaction Processing</p>
         </div>
 
-        <button
-          className="btn-black-pill"
-          style={{ width: 'auto', padding: '0.65rem 1.4rem' }}
-          onClick={() => {
-            setOpenOwnerName(username || '');
-            setOpenInitialBalance('1000.00');
-            setModalError(null);
-            setActiveModal('open');
-          }}
-        >
-          <Plus size={18} /> Open New Account
-        </button>
+        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+          <button
+            className="btn-demo-pill"
+            style={{ padding: '0.65rem 1.1rem' }}
+            onClick={() => {
+              const knownIds = getKnownAccountIds(username);
+              if (knownIds.length > 0) {
+                setLoading(true);
+                Promise.all(knownIds.map(id => fetchAccount(id, true).catch(() => null)))
+                  .finally(() => setLoading(false));
+              }
+            }}
+            disabled={loading}
+          >
+            <RefreshCw size={16} /> {loading ? 'Syncing...' : 'Sync Accounts'}
+          </button>
+
+          <button
+            className="btn-black-pill"
+            style={{ width: 'auto', padding: '0.65rem 1.4rem' }}
+            onClick={() => {
+              setOpenOwnerName(username || '');
+              setOpenInitialBalance('1000.00');
+              setModalError(null);
+              setActiveModal('open');
+            }}
+          >
+            <Plus size={18} /> Open New Account
+          </button>
+        </div>
       </div>
 
       {/* Global Success / Error Banners */}
@@ -289,38 +351,13 @@ export default function AccountsPage() {
         </div>
       </div>
 
-      {/* Account Lookup Bar */}
-      <div className="saas-card" style={{ padding: '1.25rem 1.5rem' }}>
-        <form onSubmit={handleLookupSubmit} style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-          <div className="pill-input-wrapper" style={{ flex: 1, marginBottom: 0 }}>
-            <Search size={18} className="pill-input-icon" />
-            <input
-              type="text"
-              className="pill-input"
-              placeholder="Search or paste Account ID to load into workspace..."
-              value={lookupIdInput}
-              onChange={(e) => setLookupIdInput(e.target.value)}
-            />
-          </div>
-
-          <button
-            type="submit"
-            className="btn-demo-pill"
-            style={{ height: '52px', padding: '0 1.5rem' }}
-            disabled={loading}
-          >
-            {loading ? 'Fetching...' : 'Load Account'}
-          </button>
-        </form>
-      </div>
-
       {/* Account Cards List Grid */}
       {accountsList.length === 0 ? (
         <div className="saas-card" style={{ textAlign: 'center', padding: '3.5rem 1.5rem' }}>
           <CreditCard size={48} color="var(--accent-gold)" style={{ opacity: 0.6, marginBottom: '1rem' }} />
-          <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', marginBottom: '0.5rem' }}>No Active Accounts Loaded</h3>
+          <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', marginBottom: '0.5rem' }}>No Accounts Yet</h3>
           <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', maxWidth: '420px', margin: '0 auto 1.5rem' }}>
-            Click <strong>Open New Account</strong> above to create a new account, or paste an existing Account ID in the search bar.
+            Click <strong>Open New Account</strong> above to create your first bank account with an initial balance.
           </p>
           <button
             className="btn-black-pill"

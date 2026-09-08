@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import { loginApi, setAuthToken } from '../services/api';
 
 const AuthContext = createContext(null);
@@ -10,6 +10,10 @@ export const AuthProvider = ({ children }) => {
     role: null,
     isAuthenticated: false,
   });
+
+  useEffect(() => {
+    setAuthToken(auth.token);
+  }, [auth.token]);
 
   const login = async (username, password) => {
     try {

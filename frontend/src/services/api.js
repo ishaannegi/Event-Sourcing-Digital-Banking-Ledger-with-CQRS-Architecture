@@ -18,7 +18,7 @@ const api = axios.create({
 api.interceptors.request.use(
   (config) => {
     if (inMemoryToken) {
-      config.headers['Authorization'] = `Bearer ${inMemoryToken}`;
+      config.headers.Authorization = `Bearer ${inMemoryToken}`;
     }
     return config;
   },
