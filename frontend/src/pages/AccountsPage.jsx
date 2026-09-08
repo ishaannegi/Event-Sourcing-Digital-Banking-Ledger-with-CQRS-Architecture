@@ -157,6 +157,16 @@ export default function AccountsPage() {
     }));
   };
 
+  // Helper to re-fetch all known & currently loaded account cards on screen
+  const refreshAllLoadedAccounts = () => {
+    const knownIds = getKnownAccountIds(username);
+    const loadedIds = Object.keys(accountsMap);
+    const allIds = Array.from(new Set([...knownIds, ...loadedIds]));
+    if (allIds.length > 0) {
+      Promise.all(allIds.map(id => fetchAccount(id, true).catch(() => null)));
+    }
+  };
+
   // Auto-sync token and auto-fetch all known accounts for current session on mount
   useEffect(() => {
     if (token) {
@@ -173,6 +183,15 @@ export default function AccountsPage() {
       });
     }
   }, [username, token]);
+
+  // Live polling every 3.5s to keep all displayed account cards automatically in sync across users/sessions
+  useEffect(() => {
+    const interval = setInterval(() => {
+      refreshAllLoadedAccounts();
+    }, 3500);
+
+    return () => clearInterval(interval);
+  }, [username, Object.keys(accountsMap).join(',')]);
 
   // Copy helper
   const handleCopy = (text) => {
@@ -202,6 +221,9 @@ export default function AccountsPage() {
 
       setGlobalSuccess(`Successfully opened new account [${newAcc.accountId}] for ${newAcc.ownerName} with $${newAcc.balance.toFixed(2)}`);
       closeModal();
+
+      refreshAllLoadedAccounts();
+      setTimeout(() => refreshAllLoadedAccounts(), 350);
     } catch (err) {
       const msg = err.response?.data?.message || err.response?.data?.error || 'Failed to open account';
       setModalError(msg);
@@ -224,6 +246,9 @@ export default function AccountsPage() {
       }));
       setGlobalSuccess(`Deposited $${parseFloat(depositAmount).toFixed(2)} into [${modalAccountId}] — New Balance: $${updated.balance.toFixed(2)} (v${updated.version})`);
       closeModal();
+
+      refreshAllLoadedAccounts();
+      setTimeout(() => refreshAllLoadedAccounts(), 350);
     } catch (err) {
       const msg = err.response?.data?.message || err.response?.data?.error || 'Deposit failed';
       setModalError(msg);
@@ -246,6 +271,9 @@ export default function AccountsPage() {
       }));
       setGlobalSuccess(`Withdrew $${parseFloat(withdrawAmount).toFixed(2)} from [${modalAccountId}] — New Balance: $${updated.balance.toFixed(2)} (v${updated.version})`);
       closeModal();
+
+      refreshAllLoadedAccounts();
+      setTimeout(() => refreshAllLoadedAccounts(), 350);
     } catch (err) {
       const msg = err.response?.data?.message || err.response?.data?.error || 'Withdrawal failed';
       setModalError(msg);
@@ -267,14 +295,16 @@ export default function AccountsPage() {
         saveKnownAccountId(transferToId.trim(), username);
       }
 
-      // Refresh both source and destination accounts
-      await fetchAccount(modalAccountId, true).catch(() => {});
-      if (transferToId.trim()) {
-        await fetchAccount(transferToId.trim(), true).catch(() => {});
-      }
-
       setGlobalSuccess(`Successfully transferred $${parseFloat(transferAmount).toFixed(2)} from [${modalAccountId}] to [${transferToId.trim()}]`);
       closeModal();
+
+      // Immediate refresh of all loaded account cards (source, destination, and admin list)
+      refreshAllLoadedAccounts();
+
+      // Second refresh after 350ms to ensure async Kafka projection consumer has completed updating Redis/Postgres
+      setTimeout(() => {
+        refreshAllLoadedAccounts();
+      }, 350);
     } catch (err) {
       const msg = err.response?.data?.message || err.response?.data?.error || 'Transfer failed';
       setModalError(msg);
