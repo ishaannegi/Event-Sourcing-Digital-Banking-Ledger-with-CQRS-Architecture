@@ -33,21 +33,27 @@
 }
 
 body {
-  background-color: var(--bg-canvas);
+  background-color: var(--bg-cream);
   color: var(--text-dark);
   font-family: var(--font-body);
   min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Login Page Specific Wrapper (Floating Mock Browser Window) */
+.login-page-wrapper {
+  min-height: 100vh;
+  width: 100vw;
+  background-color: var(--bg-canvas);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 1.5rem;
-  overflow-x: hidden;
   background-image: 
     radial-gradient(at 10% 20%, rgba(212, 175, 55, 0.08) 0px, transparent 40%),
     radial-gradient(at 90% 80%, rgba(197, 160, 89, 0.1) 0px, transparent 40%);
 }
 
-/* Floating Browser Window Container */
 .browser-window {
   width: 100%;
   max-width: 1240px;
@@ -118,11 +124,12 @@ body {
   }
 }
 
-/* Dashboard SaaS Layout (Sidebar + Main Area) */
+/* Edge-to-Edge SaaS Dashboard Layout (Real Browser Viewport) */
 .dashboard-layout {
   display: grid;
   grid-template-columns: 240px 1fr;
-  min-height: 720px;
+  min-height: 100vh;
+  width: 100%;
 }
 
 @media (max-width: 900px) {
@@ -138,10 +145,13 @@ body {
 .sidebar {
   background-color: var(--bg-sidebar);
   border-right: 1px solid #e6e2d9;
-  padding: 1.75rem 1.25rem;
+  padding: 2rem 1.25rem;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
+  height: 100vh;
+  position: sticky;
+  top: 0;
 }
 
 .sidebar-brand {
@@ -214,10 +224,11 @@ body {
 /* Main Dashboard Area */
 .dashboard-main {
   background-color: var(--bg-cream);
-  padding: 2rem 2.25rem;
+  padding: 2.25rem 2.75rem;
   display: flex;
   flex-direction: column;
   gap: 1.75rem;
+  min-height: 100vh;
 }
 
 .dashboard-topbar {
