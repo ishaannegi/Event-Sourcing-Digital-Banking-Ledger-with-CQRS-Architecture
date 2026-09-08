@@ -1,7 +1,24 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { getAccountApi } from '../services/api';
-import { LogOut, UserCheck, Shield, Key, Database, CheckCircle2, AlertTriangle, Play } from 'lucide-react';
+import {
+  LayoutDashboard,
+  CreditCard,
+  Repeat,
+  ShieldAlert,
+  LogOut,
+  UserCheck,
+  Key,
+  ShieldCheck,
+  CheckCircle2,
+  AlertTriangle,
+  Play,
+  Eye,
+  EyeOff,
+  Code2,
+  Search,
+  Server
+} from 'lucide-react';
 
 export default function DashboardPage() {
   const { username, role, token, logout } = useAuth();
@@ -10,6 +27,7 @@ export default function DashboardPage() {
   const [apiResult, setApiResult] = useState(null);
   const [loadingCall, setLoadingCall] = useState(false);
   const [callError, setCallError] = useState(null);
+  const [showToken, setShowToken] = useState(false);
 
   const handleTestCall = async (e) => {
     e?.preventDefault();
@@ -34,165 +52,229 @@ export default function DashboardPage() {
   };
 
   return (
-    <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '2rem 1.5rem' }}>
-      {/* Top Navbar */}
-      <header className="glass-panel" style={{
-        padding: '1.25rem 1.75rem',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        marginBottom: '2rem'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <div style={{
-            width: '40px',
-            height: '40px',
-            borderRadius: '10px',
-            background: 'linear-gradient(135deg, #6366f1, #4f46e5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}>
-            <Database size={22} color="#fff" />
-          </div>
+    <div className="browser-window">
+      {/* Top Floating Browser Chrome Header */}
+      <div className="browser-header">
+        <div className="browser-dots">
+          <div className="dot dot-red"></div>
+          <div className="dot dot-yellow"></div>
+          <div className="dot dot-green"></div>
+        </div>
+
+        <div className="browser-address-bar">
+          <ShieldCheck size={14} color="#64748b" />
+          <span>www.digitalledger.com/dashboard</span>
+        </div>
+      </div>
+
+      {/* SaaS Dashboard Split Layout (Sidebar + Main) */}
+      <div className="dashboard-layout">
+        {/* Left Sidebar */}
+        <aside className="sidebar">
           <div>
-            <h2 style={{ fontSize: '1.2rem', lineHeight: 1.2 }}>Digital Banking Ledger</h2>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Phase 7.1 Dashboard</span>
+            {/* Sidebar Brand Logo */}
+            <div className="sidebar-brand">
+              <span style={{ color: 'var(--accent-gold)', fontSize: '1.2rem' }}>✦</span>
+              <span>Digital Ledger</span>
+            </div>
+
+            {/* Sidebar Navigation */}
+            <nav className="sidebar-nav">
+              <a className="nav-item active" onClick={(e) => e.preventDefault()}>
+                <LayoutDashboard size={18} />
+                <span>Dashboard</span>
+              </a>
+
+              <a className="nav-item" onClick={(e) => e.preventDefault()}>
+                <CreditCard size={18} />
+                <span>Accounts</span>
+                <span className="nav-badge">Soon</span>
+              </a>
+
+              <a className="nav-item" onClick={(e) => e.preventDefault()}>
+                <Repeat size={18} />
+                <span>Transactions</span>
+                <span className="nav-badge">Soon</span>
+              </a>
+
+              <a className="nav-item" onClick={(e) => e.preventDefault()}>
+                <ShieldAlert size={18} />
+                <span>Audit Trail</span>
+                <span className="nav-badge">Admin</span>
+              </a>
+            </nav>
           </div>
-        </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <UserCheck size={18} color="var(--text-muted)" />
-            <span style={{ fontWeight: 600 }}>{username}</span>
-            <span className={`badge ${role === 'ROLE_ADMIN' ? 'badge-admin' : 'badge-customer'}`}>
-              {role === 'ROLE_ADMIN' ? 'ADMIN' : 'CUSTOMER'}
-            </span>
-          </div>
-
-          <button onClick={logout} className="btn-secondary" style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }}>
-            <LogOut size={16} /> Sign Out
-          </button>
-        </div>
-      </header>
-
-      {/* Main Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.5rem' }}>
-        
-        {/* Token & User Session Card */}
-        <div className="glass-panel" style={{ padding: '1.75rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.25rem' }}>
-            <Key size={20} color="var(--accent-primary)" />
-            <h3 style={{ fontSize: '1.1rem' }}>Active In-Memory JWT Session</h3>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <div>
-              <span className="form-label">Authenticated Username</span>
-              <div style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-main)', marginTop: '0.2rem' }}>
+          {/* Sidebar Bottom User Session Mini Card */}
+          <div className="sidebar-user-footer">
+            <div style={{
+              width: '36px',
+              height: '36px',
+              borderRadius: '50%',
+              backgroundColor: 'var(--accent-black)',
+              color: '#fff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontWeight: 700,
+              fontSize: '0.9rem',
+              flexShrink: 0
+            }}>
+              {username ? username.charAt(0).toUpperCase() : 'U'}
+            </div>
+            <div style={{ overflow: 'hidden' }}>
+              <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-dark)', truncate: true }}>
                 {username}
               </div>
-            </div>
-
-            <div>
-              <span className="form-label">Assigned Role</span>
-              <div style={{ marginTop: '0.2rem' }}>
-                <span className={`badge ${role === 'ROLE_ADMIN' ? 'badge-admin' : 'badge-customer'}`}>
-                  {role}
-                </span>
-              </div>
-            </div>
-
-            <div>
-              <span className="form-label">In-Memory JWT Token (Truncated)</span>
-              <div style={{
-                fontFamily: 'monospace',
-                fontSize: '0.8rem',
-                background: 'rgba(0, 0, 0, 0.4)',
-                padding: '0.75rem',
-                borderRadius: 'var(--radius-sm)',
-                border: '1px solid var(--bg-card-border)',
-                color: '#a5b4fc',
-                wordBreak: 'break-all',
-                marginTop: '0.25rem'
-              }}>
-                {token ? `${token.substring(0, 42)}...${token.substring(token.length - 20)}` : 'No Token'}
-              </div>
+              <span className={`role-pill ${role === 'ROLE_ADMIN' ? 'role-pill-admin' : 'role-pill-customer'}`}>
+                {role === 'ROLE_ADMIN' ? 'ADMIN' : 'CUSTOMER'}
+              </span>
             </div>
           </div>
-        </div>
+        </aside>
 
-        {/* Authenticated Endpoint Verification Card */}
-        <div className="glass-panel" style={{ padding: '1.75rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.25rem' }}>
-            <Shield size={20} color="var(--accent-emerald)" />
-            <h3 style={{ fontSize: '1.1rem' }}>Test Authenticated Call</h3>
+        {/* Main Content Area */}
+        <main className="dashboard-main">
+          {/* Topbar */}
+          <div className="dashboard-topbar">
+            <div>
+              <h1 className="dashboard-title">Welcome back, {username}!</h1>
+              <p className="dashboard-subtext">CQRS Architecture & Event-Sourcing Ledger Portal</p>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+              <button
+                onClick={logout}
+                className="btn-demo-pill"
+                style={{ padding: '0.5rem 1.1rem' }}
+              >
+                <LogOut size={16} /> Sign Out
+              </button>
+            </div>
           </div>
 
-          <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>
-            Test that the in-memory Bearer token authorizes requests to <code>GET /accounts/{'{id}'}</code> without triggering a 401 Unauthorized response.
-          </p>
-
-          <form onSubmit={handleTestCall} style={{ marginBottom: '1.25rem' }}>
-            <div className="form-group">
-              <label className="form-label">Account ID to Query</label>
-              <input
-                type="text"
-                className="input-field"
-                placeholder="e.g. paste account-id here"
-                value={accountIdInput}
-                onChange={(e) => setAccountIdInput(e.target.value)}
-              />
-            </div>
-
-            <button
-              type="submit"
-              className="btn-primary"
-              style={{ width: '100%', background: 'linear-gradient(135deg, #10b981, #059669)', boxShadow: '0 4px 14px var(--accent-emerald-glow)' }}
-              disabled={loadingCall}
-            >
-              {loadingCall ? 'Fetching Account...' : (
-                <>
-                  <Play size={16} /> Execute Authenticated GET Request
-                </>
-              )}
-            </button>
-          </form>
-
-          {/* Test Call Output Banners */}
-          {callError && (
-            <div className="error-banner" style={{ margin: 0 }}>
-              <AlertTriangle size={18} style={{ flexShrink: 0 }} />
-              <span>{callError}</span>
-            </div>
-          )}
-
-          {apiResult && (
-            <div style={{
-              background: 'rgba(16, 185, 129, 0.1)',
-              border: '1px solid rgba(16, 185, 129, 0.3)',
-              borderRadius: 'var(--radius-md)',
-              padding: '1rem',
-              marginTop: '1rem'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#10b981', fontWeight: 600, marginBottom: '0.5rem', fontSize: '0.9rem' }}>
-                <CheckCircle2 size={18} /> HTTP 200 OK — Authenticated Response Received
+          {/* Card 1: Session & In-Memory Token */}
+          <div className="saas-card">
+            <div className="card-header">
+              <div className="card-title-group">
+                <UserCheck size={20} color="var(--accent-gold)" />
+                <h2 className="card-title">Active In-Memory Session</h2>
               </div>
-              <pre style={{
-                fontFamily: 'monospace',
-                fontSize: '0.8rem',
-                color: '#e2e8f0',
-                background: 'rgba(0, 0, 0, 0.5)',
-                padding: '0.75rem',
-                borderRadius: 'var(--radius-sm)',
-                overflowX: 'auto'
-              }}>
-                {JSON.stringify(apiResult, null, 2)}
-              </pre>
-            </div>
-          )}
-        </div>
 
+              {/* Collapsible Debug Info Toggle Button */}
+              <button
+                type="button"
+                className="debug-toggle-btn"
+                onClick={() => setShowToken(!showToken)}
+              >
+                {showToken ? <EyeOff size={16} /> : <Eye size={16} />}
+                <span>{showToken ? 'Hide Token' : 'Debug Info (Show Token)'}</span>
+              </button>
+            </div>
+
+            {/* Session Info Grid */}
+            <div className="session-info-grid">
+              <div className="info-tile">
+                <span className="info-label">Authenticated User</span>
+                <div className="info-value">
+                  {username}
+                </div>
+              </div>
+
+              <div className="info-tile">
+                <span className="info-label">Assigned Role</span>
+                <div className="info-value">
+                  <span className={`role-pill ${role === 'ROLE_ADMIN' ? 'role-pill-admin' : 'role-pill-customer'}`}>
+                    {role === 'ROLE_ADMIN' ? 'ADMIN' : 'CUSTOMER'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="info-tile">
+                <span className="info-label">Token Storage Mode</span>
+                <div className="info-value" style={{ fontSize: '0.9rem', color: '#16a34a' }}>
+                  <ShieldCheck size={18} /> In-Memory State Only
+                </div>
+              </div>
+            </div>
+
+            {/* Collapsible Token Code Block */}
+            {showToken && (
+              <div className="token-code-block">
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem', color: 'var(--accent-gold)' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Bearer JWT Token (Memory)
+                  </span>
+                  <Code2 size={16} />
+                </div>
+                <code>{token || 'No Token Available'}</code>
+              </div>
+            )}
+          </div>
+
+          {/* Card 2: Test Authenticated API Call */}
+          <div className="saas-card">
+            <div className="card-header">
+              <div className="card-title-group">
+                <Server size={20} color="var(--accent-gold)" />
+                <h2 className="card-title">Test Authenticated Endpoint</h2>
+              </div>
+            </div>
+
+            <p style={{ fontSize: '0.9rem', color: 'var(--text-body)', marginBottom: '1.25rem', lineHeight: 1.5 }}>
+              Execute an authorized request to <code>GET /accounts/{'{id}'}</code> with your in-memory Bearer token to verify CORS and role permissions end-to-end.
+            </p>
+
+            <form onSubmit={handleTestCall} style={{ marginBottom: '1rem' }}>
+              <div className="pill-input-wrapper" style={{ marginBottom: '1.25rem' }}>
+                <Search size={18} className="pill-input-icon" />
+                <input
+                  type="text"
+                  className="pill-input"
+                  placeholder="Enter Account ID (e.g. paste account-id here)"
+                  value={accountIdInput}
+                  onChange={(e) => setAccountIdInput(e.target.value)}
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="btn-black-pill"
+                disabled={loadingCall}
+              >
+                {loadingCall ? 'Executing Request...' : (
+                  <>
+                    Execute Authenticated GET Request <Play size={16} />
+                  </>
+                )}
+              </button>
+            </form>
+
+            {/* Error Output Banner */}
+            {callError && (
+              <div className="warm-error-banner" style={{ marginTop: '1rem', marginBottom: 0 }}>
+                <AlertTriangle size={18} style={{ flexShrink: 0 }} />
+                <span>{callError}</span>
+              </div>
+            )}
+
+            {/* Formatted JSON Inspector Result Box */}
+            {apiResult && (
+              <div className="json-viewer-card">
+                <div className="json-viewer-header">
+                  <div className="json-viewer-title">
+                    <CheckCircle2 size={16} color="#10b981" />
+                    <span>HTTP 200 OK — Authenticated Response Received</span>
+                  </div>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>application/json</span>
+                </div>
+                <pre className="json-pre-block">
+                  {JSON.stringify(apiResult, null, 2)}
+                </pre>
+              </div>
+            )}
+          </div>
+        </main>
       </div>
     </div>
   );

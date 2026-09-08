@@ -3,6 +3,7 @@
   --bg-window: #fcfbfa;
   --bg-cream: #faf7f2;
   --bg-cream-dark: #f3efe6;
+  --bg-sidebar: #f5f1e8;
   --bg-white: #ffffff;
   
   --text-dark: #1a1816;
@@ -14,7 +15,7 @@
   --accent-black: #0a0a0a;
 
   --shadow-subtle: 0 4px 14px rgba(0, 0, 0, 0.04);
-  --shadow-card: 0 20px 40px -10px rgba(0, 0, 0, 0.08);
+  --shadow-card: 0 12px 30px -8px rgba(26, 24, 22, 0.06);
   --shadow-window: 0 30px 60px -12px rgba(26, 24, 22, 0.15);
 
   --font-display: 'Outfit', sans-serif;
@@ -46,10 +47,10 @@ body {
     radial-gradient(at 90% 80%, rgba(197, 160, 89, 0.1) 0px, transparent 40%);
 }
 
-/* Browser Window Floating Container */
+/* Floating Browser Window Container */
 .browser-window {
   width: 100%;
-  max-width: 1180px;
+  max-width: 1240px;
   background-color: var(--bg-window);
   border-radius: var(--radius-window);
   box-shadow: var(--shadow-window);
@@ -99,7 +100,7 @@ body {
   color: var(--text-muted);
 }
 
-/* Main Split Grid */
+/* Login Split Grid */
 .login-split-container {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -117,7 +118,248 @@ body {
   }
 }
 
-/* Left Form Panel */
+/* Dashboard SaaS Layout (Sidebar + Main Area) */
+.dashboard-layout {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  min-height: 720px;
+}
+
+@media (max-width: 900px) {
+  .dashboard-layout {
+    grid-template-columns: 1fr;
+  }
+  .sidebar {
+    display: none;
+  }
+}
+
+/* Sidebar Styling */
+.sidebar {
+  background-color: var(--bg-sidebar);
+  border-right: 1px solid #e6e2d9;
+  padding: 1.75rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.05rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dark);
+  margin-bottom: 2.25rem;
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--text-body);
+  text-decoration: none;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.nav-item:hover {
+  background-color: rgba(255, 255, 255, 0.6);
+  color: var(--text-dark);
+}
+
+.nav-item.active {
+  background-color: var(--accent-black);
+  color: var(--bg-white);
+  box-shadow: 0 4px 12px rgba(10, 10, 10, 0.15);
+}
+
+.nav-badge {
+  margin-left: auto;
+  font-size: 0.68rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: var(--radius-pill);
+  background-color: rgba(197, 160, 89, 0.2);
+  color: var(--accent-gold);
+  border: 1px solid rgba(197, 160, 89, 0.3);
+  font-weight: 700;
+}
+
+.sidebar-user-footer {
+  background-color: var(--bg-white);
+  border-radius: 18px;
+  padding: 0.85rem 1rem;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  box-shadow: var(--shadow-subtle);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+/* Main Dashboard Area */
+.dashboard-main {
+  background-color: var(--bg-cream);
+  padding: 2rem 2.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+}
+
+.dashboard-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid #e8e4db;
+}
+
+.dashboard-title {
+  font-family: var(--font-display);
+  font-size: 1.85rem;
+  font-weight: 700;
+  color: var(--text-dark);
+  letter-spacing: -0.02em;
+}
+
+.dashboard-subtext {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+/* SaaS Dashboard Cards */
+.saas-card {
+  background-color: var(--bg-white);
+  border-radius: var(--radius-card);
+  padding: 1.75rem;
+  box-shadow: var(--shadow-card);
+  border: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.25rem;
+}
+
+.card-title-group {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.card-title {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-dark);
+}
+
+/* Session Info Card Grid */
+.session-info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1.25rem;
+}
+
+.info-tile {
+  background-color: #faf8f5;
+  border-radius: 16px;
+  padding: 1.1rem;
+  border: 1px solid #eee9df;
+}
+
+.info-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.35rem;
+  display: block;
+}
+
+.info-value {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text-dark);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Role Badges */
+.role-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.85rem;
+  border-radius: var(--radius-pill);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.role-pill-admin {
+  background-color: #fef2f2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+}
+.role-pill-customer {
+  background-color: #f0fdf4;
+  color: #16a34a;
+  border: 1px solid #bbf7d0;
+}
+
+/* Collapsible Debug Token Row */
+.debug-toggle-btn {
+  background: none;
+  border: none;
+  color: var(--accent-gold);
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: var(--radius-pill);
+  transition: all 0.2s ease;
+}
+.debug-toggle-btn:hover {
+  background-color: rgba(197, 160, 89, 0.1);
+}
+
+.token-code-block {
+  font-family: 'SFMono-Regular', Consolas, Monaco, monospace;
+  font-size: 0.8rem;
+  background-color: #1a1816;
+  color: #e8d9b8;
+  padding: 1rem;
+  border-radius: 14px;
+  word-break: break-all;
+  margin-top: 0.85rem;
+  border: 1px solid rgba(197, 160, 89, 0.3);
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+/* Inputs & Buttons */
 .form-panel {
   background: linear-gradient(180deg, #faf7f2 0%, #f4efe4 100%);
   border-radius: var(--radius-card);
@@ -125,25 +367,6 @@ body {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-}
-
-.brand-header {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-size: 1.05rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-dark);
-}
-
-.form-content {
-  margin: auto 0;
-  max-width: 380px;
-  width: 100%;
-  align-self: center;
 }
 
 .form-title {
@@ -162,7 +385,6 @@ body {
   line-height: 1.45;
 }
 
-/* Rounded Pill Inputs */
 .pill-input-wrapper {
   position: relative;
   margin-bottom: 1rem;
@@ -211,7 +433,6 @@ body {
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  margin-top: 1.25rem;
   transition: all 0.2s ease;
   box-shadow: 0 8px 20px rgba(10, 10, 10, 0.15);
 }
@@ -334,7 +555,6 @@ body {
   color: rgba(255, 255, 255, 0.8);
 }
 
-/* Inline Error Alert */
 .warm-error-banner {
   background-color: #fff0f0;
   border: 1px solid #fecaca;
@@ -346,4 +566,46 @@ body {
   align-items: center;
   gap: 0.6rem;
   margin-bottom: 1.25rem;
+}
+
+/* Formatted JSON Inspector Block */
+.json-viewer-card {
+  background-color: #1a1816;
+  border-radius: 16px;
+  border: 1px solid rgba(197, 160, 89, 0.25);
+  padding: 1.25rem;
+  margin-top: 1.25rem;
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+.json-viewer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.85rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.json-viewer-title {
+  font-family: var(--font-display);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #e8d9b8;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.json-pre-block {
+  font-family: 'SFMono-Regular', Consolas, Monaco, monospace;
+  font-size: 0.82rem;
+  color: #a7f3d0;
+  overflow-x: auto;
+  line-height: 1.5;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
