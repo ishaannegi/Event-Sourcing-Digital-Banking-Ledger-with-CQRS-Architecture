@@ -24,6 +24,10 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.bank.ledger.eventstore.EventEntity;
+import com.bank.ledger.eventstore.EventStoreService;
+
+import java.util.List;
 import java.util.Optional;
 
 @RestController
@@ -36,13 +40,16 @@ public class AccountController {
     private final AccountCommandHandler commandHandler;
     private final AccountBalanceRepository accountBalanceRepository;
     private final AccountCacheService accountCacheService;
+    private final EventStoreService eventStoreService;
 
     public AccountController(AccountCommandHandler commandHandler,
                              AccountBalanceRepository accountBalanceRepository,
-                             AccountCacheService accountCacheService) {
+                             AccountCacheService accountCacheService,
+                             EventStoreService eventStoreService) {
         this.commandHandler = commandHandler;
         this.accountBalanceRepository = accountBalanceRepository;
         this.accountCacheService = accountCacheService;
+        this.eventStoreService = eventStoreService;
     }
 
     @Operation(
@@ -229,6 +236,37 @@ public class AccountController {
                 })
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    @Operation(
+            summary = "Get raw event stream for an account",
+            description = "Returns the raw event stream from the Event Store ordered by version ascending for aggregate inspection."
+    )
+    @ApiResponse(responseCode = "200", description = "Raw event stream retrieved successfully")
+    @ApiResponse(responseCode = "401", description = "Missing or invalid Bearer JWT token")
+    @ApiResponse(responseCode = "403", description = "Forbidden - account ownership mismatch")
+    @ApiResponse(responseCode = "404", description = "Account aggregate not found")
+    @GetMapping("/{id}/events")
+    public ResponseEntity<List<DTOs.EventLogResponse>> getAccountEvents(@PathVariable("id") String accountId) {
+        AccountAggregate aggregate = commandHandler.loadAggregate(accountId);
+        if (!aggregate.isActive()) {
+            return ResponseEntity.notFound().build();
+        }
+        validateAccountOwnership(aggregate.getOwnerName());
+
+        List<EventEntity> entities = eventStoreService.loadEventEntities(accountId);
+        List<DTOs.EventLogResponse> responseList = entities.stream()
+                .map(e -> new DTOs.EventLogResponse(
+                        e.getId() != null ? e.getId().toString() : null,
+                        e.getAggregateId(),
+                        e.getEventType(),
+                        e.getPayload(),
+                        e.getVersion(),
+                        e.getCreatedAt()
+                ))
+                .toList();
+
+        return ResponseEntity.ok(responseList);
     }
 
     private void validateAccountOwnership(String accountOwnerName) {

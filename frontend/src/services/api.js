@@ -60,4 +60,9 @@ export const transferApi = async (fromAccountId, toAccountId, amount) => {
   return response.data;
 };
 
+export const getAccountEventsApi = async (accountId) => {
+  const response = await api.get(`/accounts/${accountId}/events`);
+  return response.data;
+};
+
 export default api;

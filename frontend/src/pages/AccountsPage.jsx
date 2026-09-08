@@ -6,6 +6,7 @@ import {
   depositApi,
   withdrawApi,
   transferApi,
+  getAccountEventsApi,
   setAuthToken
 } from '../services/api';
 import {
@@ -22,7 +23,14 @@ import {
   X,
   Wallet,
   ShieldCheck,
-  Layers
+  Layers,
+  History,
+  ChevronDown,
+  ChevronUp,
+  Sparkles,
+  Clock,
+  Code,
+  PlusCircle
 } from 'lucide-react';
 
 const getKnownAccountIds = (user) => {
@@ -71,8 +79,13 @@ export default function AccountsPage() {
   const [copiedId, setCopiedId] = useState(null);
 
   // Modal States
-  const [activeModal, setActiveModal] = useState(null); // 'open' | 'deposit' | 'withdraw' | 'transfer'
-  const [modalAccountId, setModalAccountId] = useState(null); // target account for deposit/withdraw/transfer
+  const [activeModal, setActiveModal] = useState(null); // 'open' | 'deposit' | 'withdraw' | 'transfer' | 'events'
+  const [modalAccountId, setModalAccountId] = useState(null); // target account for deposit/withdraw/transfer/events
+
+  // Event Log Modal States
+  const [eventLogList, setEventLogList] = useState([]);
+  const [eventLogLoading, setEventLogLoading] = useState(false);
+  const [expandedPayloads, setExpandedPayloads] = useState({});
 
   // Modal Form Inputs
   const [openOwnerName, setOpenOwnerName] = useState(username || '');
@@ -115,6 +128,33 @@ export default function AccountsPage() {
     } finally {
       if (!silent) setLoading(false);
     }
+  };
+
+  // Open Event Log Modal handler
+  const handleOpenEventsModal = async (accountId) => {
+    setModalAccountId(accountId);
+    setActiveModal('events');
+    setEventLogLoading(true);
+    setModalError(null);
+    setEventLogList([]);
+    setExpandedPayloads({});
+
+    try {
+      const events = await getAccountEventsApi(accountId);
+      setEventLogList(events || []);
+    } catch (err) {
+      const msg = err.response?.data?.message || err.response?.data?.error || 'Failed to load event stream for account';
+      setModalError(msg);
+    } finally {
+      setEventLogLoading(false);
+    }
+  };
+
+  const togglePayload = (key) => {
+    setExpandedPayloads(prev => ({
+      ...prev,
+      [key]: !prev[key]
+    }));
   };
 
   // Auto-sync token and auto-fetch all known accounts for current session on mount
@@ -375,7 +415,7 @@ export default function AccountsPage() {
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '1.5rem' }}>
           {accountsList.map(acc => (
-            <div key={acc.accountId} className="saas-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+            <div key={acc.accountId} className="saas-card" style={{ display: 'flex', flexDirection: 'column', justifyContext: 'space-between' }}>
               <div>
                 {/* Account Card Header */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
@@ -487,6 +527,14 @@ export default function AccountsPage() {
                   }}
                 >
                   <Repeat size={15} /> Transfer (Double-Entry)
+                </button>
+
+                <button
+                  className="btn-demo-pill"
+                  style={{ justifyContent: 'center', fontSize: '0.8rem', height: '38px', gridColumn: 'span 2', backgroundColor: '#faf8f5', borderColor: '#e8e4db' }}
+                  onClick={() => handleOpenEventsModal(acc.accountId)}
+                >
+                  <History size={15} color="var(--accent-gold)" /> View Event Log
                 </button>
               </div>
             </div>
@@ -740,6 +788,207 @@ export default function AccountsPage() {
                 {modalSubmitting ? 'Executing Transfer...' : 'Confirm Atomic Transfer'}
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 5: Raw Event Stream Timeline */}
+      {activeModal === 'events' && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(26, 24, 22, 0.6)',
+          backdropFilter: 'blur(6px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '1.5rem',
+          zIndex: 1000
+        }}>
+          <div className="saas-card" style={{ width: '100%', maxWidth: '640px', maxHeight: '85vh', display: 'flex', flexDirection: 'column', padding: '2rem', overflow: 'hidden' }}>
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', paddingBottom: '0.75rem', borderBottom: '1px solid #f0ece3' }}>
+              <div>
+                <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.3rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <History size={20} color="var(--accent-gold)" /> Aggregate Event Stream
+                </h3>
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                  ID: {modalAccountId}
+                </span>
+              </div>
+              <button onClick={closeModal} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Event Sourcing Demo Callout Banner */}
+            <div style={{
+              backgroundColor: '#fffbeb',
+              border: '1px solid #fef3c7',
+              borderRadius: '14px',
+              padding: '0.85rem 1rem',
+              fontSize: '0.85rem',
+              color: '#92400e',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.65rem',
+              marginBottom: '1.25rem',
+              lineHeight: 1.45
+            }}>
+              <Sparkles size={20} color="var(--accent-gold)" style={{ flexShrink: 0 }} />
+              <span>
+                <strong>Event Sourcing Invariant:</strong> Balance is never stored directly — it's computed by replaying these events in order.
+              </span>
+            </div>
+
+            {modalError && (
+              <div className="warm-error-banner" style={{ marginBottom: '1rem' }}>
+                <AlertTriangle size={18} style={{ flexShrink: 0 }} />
+                <span>{modalError}</span>
+              </div>
+            )}
+
+            {/* Scrollable Event Timeline */}
+            <div style={{ overflowY: 'auto', flex: 1, paddingRight: '0.35rem', display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+              {eventLogLoading ? (
+                <div style={{ textAlign: 'center', padding: '2.5rem 0', color: 'var(--text-muted)' }}>
+                  <RefreshCw size={24} className="spin" style={{ marginBottom: '0.5rem' }} />
+                  <p style={{ fontSize: '0.875rem' }}>Replaying event stream from Event Store...</p>
+                </div>
+              ) : eventLogList.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '2rem 0', color: 'var(--text-muted)' }}>
+                  <Clock size={28} color="var(--accent-gold)" style={{ opacity: 0.5, marginBottom: '0.5rem' }} />
+                  <p style={{ fontSize: '0.875rem' }}>No events recorded for this aggregate ID yet.</p>
+                </div>
+              ) : (
+                eventLogList.map((evt, idx) => {
+                  let icon = <Clock size={16} color="var(--accent-gold)" />;
+                  let badgeBg = '#faf8f5';
+                  let badgeColor = 'var(--text-dark)';
+                  let badgeBorder = '#eee9df';
+                  let label = evt.eventType;
+
+                  if (evt.eventType === 'AccountOpenedEvent' || evt.eventType === 'AccountOpened') {
+                    icon = <PlusCircle size={16} color="#2563eb" />;
+                    badgeBg = '#eff6ff';
+                    badgeColor = '#1e40af';
+                    badgeBorder = '#bfdbfe';
+                    label = 'Account Opened';
+                  } else if (evt.eventType === 'FundsDepositedEvent' || evt.eventType === 'FundsDeposited') {
+                    icon = <ArrowDownLeft size={16} color="#16a34a" />;
+                    badgeBg = '#f0fdf4';
+                    badgeColor = '#166534';
+                    badgeBorder = '#bbf7d0';
+                    label = 'Funds Deposited';
+                  } else if (evt.eventType === 'FundsWithdrawnEvent' || evt.eventType === 'FundsWithdrawn') {
+                    icon = <ArrowUpRight size={16} color="#dc2626" />;
+                    badgeBg = '#fef2f2';
+                    badgeColor = '#991b1b';
+                    badgeBorder = '#fecaca';
+                    label = 'Funds Withdrawn';
+                  } else if (evt.eventType === 'TransferInitiatedEvent' || evt.eventType === 'TransferInitiated') {
+                    icon = <Repeat size={16} color="#9333ea" />;
+                    badgeBg = '#faf5ff';
+                    badgeColor = '#6b21a8';
+                    badgeBorder = '#e9d5ff';
+                    label = 'Transfer Initiated';
+                  }
+
+                  const isExpanded = !!expandedPayloads[evt.id || idx];
+
+                  let formattedPayload = evt.payload;
+                  try {
+                    const parsed = JSON.parse(evt.payload);
+                    formattedPayload = JSON.stringify(parsed, null, 2);
+                  } catch (e) {
+                    // keep raw
+                  }
+
+                  return (
+                    <div
+                      key={evt.id || idx}
+                      style={{
+                        backgroundColor: '#ffffff',
+                        borderRadius: '14px',
+                        border: '1px solid #e8e4db',
+                        padding: '0.85rem 1rem',
+                        boxShadow: 'var(--shadow-subtle)'
+                      }}
+                    >
+                      {/* Event Row Header */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                          <span style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.35rem',
+                            backgroundColor: badgeBg,
+                            color: badgeColor,
+                            border: `1px solid ${badgeBorder}`,
+                            padding: '0.25rem 0.65rem',
+                            borderRadius: 'var(--radius-pill)',
+                            fontSize: '0.75rem',
+                            fontWeight: 700
+                          }}>
+                            {icon}
+                            <span>{label}</span>
+                          </span>
+
+                          <span style={{
+                            backgroundColor: 'rgba(197, 160, 89, 0.15)',
+                            color: 'var(--accent-gold)',
+                            border: '1px solid rgba(197, 160, 89, 0.3)',
+                            borderRadius: 'var(--radius-pill)',
+                            fontSize: '0.72rem',
+                            fontWeight: 700,
+                            padding: '0.15rem 0.55rem'
+                          }}>
+                            v{evt.version}
+                          </span>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                            {evt.createdAt ? new Date(evt.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'Just now'}
+                          </span>
+
+                          <button
+                            type="button"
+                            onClick={() => togglePayload(evt.id || idx)}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              cursor: 'pointer',
+                              color: 'var(--text-muted)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.2rem',
+                              fontSize: '0.75rem',
+                              fontWeight: 600
+                            }}
+                          >
+                            <Code size={13} /> {isExpanded ? 'Hide Payload' : 'Payload'}
+                            {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Expandable JSON Payload Block */}
+                      {isExpanded && (
+                        <div className="token-code-block" style={{ marginTop: '0.65rem', padding: '0.75rem', backgroundColor: '#1a1816', borderRadius: '10px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.25rem', color: 'var(--accent-gold)', fontSize: '0.72rem' }}>
+                            <span>RAW EVENT PAYLOAD ({evt.eventType})</span>
+                          </div>
+                          <pre style={{ margin: 0, fontSize: '0.78rem', color: '#a7f3d0', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                            {formattedPayload}
+                          </pre>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </div>
         </div>
       )}

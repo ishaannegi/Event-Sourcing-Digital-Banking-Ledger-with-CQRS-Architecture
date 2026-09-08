@@ -28,6 +28,10 @@ public class EventStoreService {
         this.kafkaEventProducer = kafkaEventProducer;
     }
 
+    public List<EventEntity> loadEventEntities(String aggregateId) {
+        return eventStoreRepository.findByAggregateIdOrderByVersionAsc(aggregateId);
+    }
+
     public List<DomainEvent> loadEventStream(String aggregateId) {
         List<EventEntity> entities = eventStoreRepository.findByAggregateIdOrderByVersionAsc(aggregateId);
         List<DomainEvent> events = new ArrayList<>();
