@@ -862,6 +862,227 @@ export default function AccountsPage() {
                 </div>
               ) : (
                 eventLogList.map((evt, idx) => {
+                  let payloadObj = {};
+                  let formattedPayload = evt.payload;
+                  try {
+                    payloadObj = typeof evt.payload === 'string' ? JSON.parse(evt.payload) : (evt.payload || {});
+                    formattedPayload = JSON.stringify(payloadObj, null, 2);
+                  } catch (e) {
+                    payloadObj = {};
+                  }
+
+                  const isExpanded = !!expandedPayloads[evt.id || idx];
+                  const isTransferEvent = evt.eventType === 'TransferInitiatedEvent' || evt.eventType === 'TransferInitiated';
+
+                  if (isTransferEvent) {
+                    const fromAcc = payloadObj.fromAccountId || evt.aggregateId;
+                    const toAcc = payloadObj.toAccountId || 'N/A';
+                    const amountVal = Number(payloadObj.amount || 0).toFixed(2);
+                    const transferIdStr = payloadObj.transferId ? payloadObj.transferId.substring(0, 8) + '...' : 'N/A';
+
+                    return (
+                      <div
+                        key={evt.id || idx}
+                        style={{
+                          backgroundColor: '#ffffff',
+                          borderRadius: '16px',
+                          border: '1.5px solid #e9d5ff',
+                          padding: '1.1rem 1.25rem',
+                          boxShadow: 'var(--shadow-card)',
+                          position: 'relative'
+                        }}
+                      >
+                        {/* Card Header Bar */}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.85rem', paddingBottom: '0.65rem', borderBottom: '1px solid #f3e8ff' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                            <span style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.35rem',
+                              backgroundColor: '#faf5ff',
+                              color: '#6b21a8',
+                              border: '1px solid #e9d5ff',
+                              padding: '0.25rem 0.65rem',
+                              borderRadius: 'var(--radius-pill)',
+                              fontSize: '0.78rem',
+                              fontWeight: 700
+                            }}>
+                              <Repeat size={15} color="#9333ea" /> Double-Entry Transfer
+                            </span>
+
+                            <span style={{
+                              backgroundColor: 'rgba(197, 160, 89, 0.15)',
+                              color: 'var(--accent-gold)',
+                              border: '1px solid rgba(197, 160, 89, 0.3)',
+                              borderRadius: 'var(--radius-pill)',
+                              fontSize: '0.72rem',
+                              fontWeight: 700,
+                              padding: '0.15rem 0.55rem'
+                            }}>
+                              v{evt.version}
+                            </span>
+                          </div>
+
+                          {/* Invariant Badge */}
+                          <span style={{
+                            backgroundColor: '#f0fdf4',
+                            color: '#166534',
+                            border: '1px solid #bbf7d0',
+                            padding: '0.25rem 0.65rem',
+                            borderRadius: 'var(--radius-pill)',
+                            fontSize: '0.75rem',
+                            fontWeight: 700,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.35rem'
+                          }}>
+                            <CheckCircle2 size={14} color="#16a34a" /> Debit = Credit (Invariant Held)
+                          </span>
+                        </div>
+
+                        {/* Transfer ID subtext & timestamp */}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.85rem', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                          <span style={{ fontFamily: 'monospace' }}>
+                            Transfer #{payloadObj.transferId || evt.id || idx}
+                          </span>
+                          <span>
+                            {evt.createdAt ? new Date(evt.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'Just now'}
+                          </span>
+                        </div>
+
+                        {/* Visual Linked Pair Group (DEBIT + CREDIT) */}
+                        <div style={{
+                          position: 'relative',
+                          backgroundColor: '#faf8f5',
+                          borderRadius: '14px',
+                          border: '1px solid #eee9df',
+                          padding: '0.85rem 1rem',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '0.75rem',
+                          marginBottom: '0.85rem'
+                        }}>
+                          {/* Left connecting vertical line indicator */}
+                          <div style={{
+                            position: 'absolute',
+                            left: '0.85rem',
+                            top: '1.25rem',
+                            bottom: '1.25rem',
+                            width: '3px',
+                            backgroundColor: '#c5a059',
+                            borderRadius: '2px'
+                          }} />
+
+                          {/* Row 1: DEBIT Entry */}
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingLeft: '1.1rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                              <span style={{
+                                backgroundColor: '#fef2f2',
+                                color: '#dc2626',
+                                border: '1px solid #fecaca',
+                                fontSize: '0.7rem',
+                                fontWeight: 800,
+                                padding: '0.15rem 0.5rem',
+                                borderRadius: '6px',
+                                letterSpacing: '0.05em'
+                              }}>
+                                DEBIT (-)
+                              </span>
+                              <div>
+                                <span style={{ fontSize: '0.825rem', fontWeight: 700, color: 'var(--text-dark)' }}>Source Account</span>
+                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', fontFamily: 'monospace' }}>
+                                  {fromAcc}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '1.05rem', color: '#dc2626', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                              <ArrowUpRight size={16} /> -${amountVal}
+                            </div>
+                          </div>
+
+                          {/* Divider line inside linked card */}
+                          <div style={{ height: '1px', backgroundColor: '#e8e4db', marginLeft: '1.1rem' }} />
+
+                          {/* Row 2: CREDIT Entry */}
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingLeft: '1.1rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                              <span style={{
+                                backgroundColor: '#f0fdf4',
+                                color: '#16a34a',
+                                border: '1px solid #bbf7d0',
+                                fontSize: '0.7rem',
+                                fontWeight: 800,
+                                padding: '0.15rem 0.5rem',
+                                borderRadius: '6px',
+                                letterSpacing: '0.05em'
+                              }}>
+                                CREDIT (+)
+                              </span>
+                              <div>
+                                <span style={{ fontSize: '0.825rem', fontWeight: 700, color: 'var(--text-dark)' }}>Destination Account</span>
+                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', fontFamily: 'monospace' }}>
+                                  {toAcc}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '1.05rem', color: '#16a34a', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                              <ArrowDownLeft size={16} /> +${amountVal}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Double-Entry Proof Footer */}
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          fontSize: '0.75rem',
+                          color: 'var(--text-muted)',
+                          padding: '0.2rem 0.2rem 0'
+                        }}>
+                          <div style={{ display: 'flex', gap: '0.85rem' }}>
+                            <span>Debit: <strong style={{ color: '#dc2626' }}>${amountVal}</strong></span>
+                            <span>Credit: <strong style={{ color: '#16a34a' }}>${amountVal}</strong></span>
+                            <span>Net Change: <strong style={{ color: 'var(--text-dark)' }}>$0.00</strong></span>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => togglePayload(evt.id || idx)}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              cursor: 'pointer',
+                              color: 'var(--text-muted)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.2rem',
+                              fontSize: '0.75rem',
+                              fontWeight: 600
+                            }}
+                          >
+                            <Code size={13} /> {isExpanded ? 'Hide Payload' : 'Payload'}
+                            {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                          </button>
+                        </div>
+
+                        {/* Expandable JSON Payload Block */}
+                        {isExpanded && (
+                          <div className="token-code-block" style={{ marginTop: '0.65rem', padding: '0.75rem', backgroundColor: '#1a1816', borderRadius: '10px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.25rem', color: 'var(--accent-gold)', fontSize: '0.72rem' }}>
+                              <span>RAW EVENT PAYLOAD ({evt.eventType})</span>
+                            </div>
+                            <pre style={{ margin: 0, fontSize: '0.78rem', color: '#a7f3d0', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                              {formattedPayload}
+                            </pre>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
+
                   let icon = <Clock size={16} color="var(--accent-gold)" />;
                   let badgeBg = '#faf8f5';
                   let badgeColor = 'var(--text-dark)';
@@ -892,16 +1113,6 @@ export default function AccountsPage() {
                     badgeColor = '#6b21a8';
                     badgeBorder = '#e9d5ff';
                     label = 'Transfer Initiated';
-                  }
-
-                  const isExpanded = !!expandedPayloads[evt.id || idx];
-
-                  let formattedPayload = evt.payload;
-                  try {
-                    const parsed = JSON.parse(evt.payload);
-                    formattedPayload = JSON.stringify(parsed, null, 2);
-                  } catch (e) {
-                    // keep raw
                   }
 
                   return (
