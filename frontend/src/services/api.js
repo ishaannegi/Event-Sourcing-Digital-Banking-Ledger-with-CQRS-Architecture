@@ -40,4 +40,24 @@ export const getBalanceViewApi = async (accountId) => {
   return response.data;
 };
 
+export const openAccountApi = async (ownerName, initialBalance) => {
+  const response = await api.post('/accounts', { ownerName, initialBalance });
+  return response.data;
+};
+
+export const depositApi = async (accountId, amount) => {
+  const response = await api.post(`/accounts/${accountId}/deposit`, { amount });
+  return response.data;
+};
+
+export const withdrawApi = async (accountId, amount) => {
+  const response = await api.post(`/accounts/${accountId}/withdraw`, { amount });
+  return response.data;
+};
+
+export const transferApi = async (fromAccountId, toAccountId, amount) => {
+  const response = await api.post('/accounts/transfer', { fromAccountId, toAccountId, amount });
+  return response.data;
+};
+
 export default api;
