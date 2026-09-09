@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import {
   getBalanceViewApi,
+  getAccountApi,
   openAccountApi,
   depositApi,
   withdrawApi,
@@ -30,7 +31,12 @@ import {
   Sparkles,
   Clock,
   Code,
-  PlusCircle
+  PlusCircle,
+  Zap,
+  Columns,
+  Cpu,
+  Lock,
+  ShieldAlert
 } from 'lucide-react';
 
 const getKnownAccountIds = (user) => {
@@ -79,13 +85,26 @@ export default function AccountsPage() {
   const [copiedId, setCopiedId] = useState(null);
 
   // Modal States
-  const [activeModal, setActiveModal] = useState(null); // 'open' | 'deposit' | 'withdraw' | 'transfer' | 'events'
-  const [modalAccountId, setModalAccountId] = useState(null); // target account for deposit/withdraw/transfer/events
+  const [activeModal, setActiveModal] = useState(null); // 'open' | 'deposit' | 'withdraw' | 'transfer' | 'events' | 'cqrs'
+  const [modalAccountId, setModalAccountId] = useState(null); // target account for deposit/withdraw/transfer/events/cqrs
 
   // Event Log Modal States
   const [eventLogList, setEventLogList] = useState([]);
   const [eventLogLoading, setEventLogLoading] = useState(false);
   const [expandedPayloads, setExpandedPayloads] = useState({});
+
+  // CQRS Inspector Modal States
+  const [cqrsWriteData, setCqrsWriteData] = useState(null);
+  const [cqrsReadData, setCqrsReadData] = useState(null);
+  const [cqrsLoadingWrite, setCqrsLoadingWrite] = useState(false);
+  const [cqrsLoadingRead, setCqrsLoadingRead] = useState(false);
+  const [cqrsFiringDeposit, setCqrsFiringDeposit] = useState(false);
+  const [cqrsSyncBenchmarkMs, setCqrsSyncBenchmarkMs] = useState(null);
+
+  // Concurrency Inspector Modal States
+  const [concurrencyExecuting, setConcurrencyExecuting] = useState(false);
+  const [concurrencyResult1, setConcurrencyResult1] = useState(null);
+  const [concurrencyResult2, setConcurrencyResult2] = useState(null);
 
   // Modal Form Inputs
   const [openOwnerName, setOpenOwnerName] = useState(username || '');
@@ -148,6 +167,133 @@ export default function AccountsPage() {
     } finally {
       setEventLogLoading(false);
     }
+  };
+
+  // Open CQRS Inspector Modal handler
+  const handleOpenCqrsInspector = async (accountId) => {
+    setModalAccountId(accountId);
+    setActiveModal('cqrs');
+    setModalError(null);
+    setCqrsSyncBenchmarkMs(null);
+    setCqrsWriteData(null);
+    setCqrsReadData(null);
+    setCqrsLoadingWrite(true);
+    setCqrsLoadingRead(true);
+
+    try {
+      const [writeData, readData] = await Promise.all([
+        getAccountApi(accountId),
+        getBalanceViewApi(accountId)
+      ]);
+      setCqrsWriteData(writeData);
+      setCqrsReadData(readData);
+    } catch (err) {
+      const msg = err.response?.data?.message || err.response?.data?.error || 'Failed to inspect CQRS models';
+      setModalError(msg);
+    } finally {
+      setCqrsLoadingWrite(false);
+      setCqrsLoadingRead(false);
+    }
+  };
+
+  // Fire Test Deposit ($10.00) in CQRS Inspector
+  const handleFireTestDeposit = async () => {
+    if (!modalAccountId) return;
+    setCqrsFiringDeposit(true);
+    setModalError(null);
+    setCqrsSyncBenchmarkMs(null);
+
+    const startTime = Date.now();
+
+    try {
+      // 1. Fire Deposit Command (Write Path)
+      await depositApi(modalAccountId, 10.00);
+
+      // 2. Immediately fetch Command Side (Source of Truth via Event Store Replay)
+      const freshWrite = await getAccountApi(modalAccountId);
+      setCqrsWriteData(freshWrite);
+      setCqrsLoadingWrite(false);
+
+      const targetVersion = freshWrite.version;
+
+      // 3. Poll Query Side (Read Model - Redis/Postgres) every 100ms until version catches up
+      let attempts = 0;
+      const maxAttempts = 25;
+
+      while (attempts < maxAttempts) {
+        attempts++;
+        try {
+          const freshRead = await getBalanceViewApi(modalAccountId);
+          setCqrsReadData(freshRead);
+
+          if (freshRead.version >= targetVersion) {
+            const elapsed = Date.now() - startTime;
+            setCqrsSyncBenchmarkMs(elapsed);
+            break;
+          }
+        } catch (e) {
+          // keep polling
+        }
+        await new Promise(res => setTimeout(res, 100));
+      }
+
+      refreshAllLoadedAccounts();
+    } catch (err) {
+      const msg = err.response?.data?.message || err.response?.data?.error || 'Failed to fire test deposit';
+      setModalError(msg);
+    } finally {
+      setCqrsFiringDeposit(false);
+    }
+  };
+
+  // Open Concurrency Modal Handler
+  const handleOpenConcurrencyModal = (accountId) => {
+    setModalAccountId(accountId);
+    setActiveModal('concurrency');
+    setModalError(null);
+    setConcurrencyResult1(null);
+    setConcurrencyResult2(null);
+  };
+
+  // Simulate Concurrent Writes Handler
+  const handleSimulateConcurrency = async () => {
+    const targetId = modalAccountId;
+    if (!targetId) return;
+
+    setConcurrencyExecuting(true);
+    setConcurrencyResult1(null);
+    setConcurrencyResult2(null);
+    setModalError(null);
+
+    const makeRequest = (amount) => depositApi(targetId, amount)
+      .then(data => ({
+        status: 200,
+        statusText: '200 OK (Committed)',
+        data,
+        timestamp: new Date().toLocaleTimeString()
+      }))
+      .catch(err => ({
+        status: err.response?.status || 409,
+        statusText: `${err.response?.status || 409} Conflict`,
+        error: err.response?.data?.message || err.response?.data?.error || 'Optimistic lock failure',
+        data: err.response?.data,
+        timestamp: new Date().toLocaleTimeString()
+      }));
+
+    // Dispatches two $50.00 deposits concurrently to trigger optimistic locking retry
+    const results = await Promise.all([
+      makeRequest(50.00),
+      makeRequest(50.00)
+    ]);
+
+    // Sort by version ascending so Request #1 (e.g. v55) and Request #2 (e.g. v56) are displayed sequentially
+    const sorted = [...results].sort((a, b) => (a.data?.version || 0) - (b.data?.version || 0));
+
+    setConcurrencyResult1(sorted[0]);
+    setConcurrencyResult2(sorted[1] || sorted[0]);
+    setConcurrencyExecuting(false);
+
+    refreshAllLoadedAccounts();
   };
 
   const togglePayload = (key) => {
@@ -502,7 +648,7 @@ export default function AccountsPage() {
                     style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}
                     title="Copy Account ID"
                   >
-                    {copiedId === acc.accountId ? <Check size={14} color="#16a34a" /> : <Copy size={14} />}
+{copiedId === acc.accountId ? <Check size={14} color="#16a34a" /> : <Copy size={14} />}
                   </button>
                 </div>
 
@@ -565,6 +711,22 @@ export default function AccountsPage() {
                   onClick={() => handleOpenEventsModal(acc.accountId)}
                 >
                   <History size={15} color="var(--accent-gold)" /> View Event Log
+                </button>
+
+                <button
+                  className="btn-demo-pill"
+                  style={{ justifyContent: 'center', fontSize: '0.8rem', height: '38px', gridColumn: 'span 2', backgroundColor: '#f0fdf4', borderColor: '#bbf7d0', color: '#166534' }}
+                  onClick={() => handleOpenCqrsInspector(acc.accountId)}
+                >
+                  <Columns size={15} color="#166534" /> CQRS Inspector (Write vs Read)
+                </button>
+
+                <button
+                  className="btn-demo-pill"
+                  style={{ justifyContent: 'center', fontSize: '0.8rem', height: '38px', gridColumn: 'span 2', backgroundColor: '#faf5ff', borderColor: '#e9d5ff', color: '#6b21a8' }}
+                  onClick={() => handleOpenConcurrencyModal(acc.accountId)}
+                >
+                  <Lock size={15} color="#9333ea" /> Simulate Concurrency (409 Conflict)
                 </button>
               </div>
             </div>
@@ -1233,6 +1395,539 @@ export default function AccountsPage() {
           </div>
         </div>
       )}
+
+      {/* MODAL 6: CQRS Write vs Read Inspector */}
+      {activeModal === 'cqrs' && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(26, 24, 22, 0.6)',
+          backdropFilter: 'blur(6px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '1.5rem',
+          zIndex: 1000
+        }}>
+          <div className="saas-card" style={{ width: '100%', maxWidth: '840px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: '2rem', overflow: 'hidden' }}>
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', paddingBottom: '0.75rem', borderBottom: '1px solid #f0ece3' }}>
+              <div>
+                <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.35rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Columns size={22} color="var(--accent-gold)" /> CQRS Split-Screen Inspector
+                </h3>
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                  Account ID: {modalAccountId}
+                </span>
+              </div>
+              <button onClick={closeModal} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Interactive Demo Action Bar */}
+            <div style={{
+              backgroundColor: '#faf8f5',
+              border: '1px solid #eee9df',
+              borderRadius: '16px',
+              padding: '1rem 1.25rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: '1.25rem',
+              flexWrap: 'wrap',
+              gap: '0.75rem'
+            }}>
+              <div>
+                <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-dark)', display: 'block' }}>
+                  Eventual Consistency Live Simulation
+                </span>
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                  Fire a write command to append to Event Store, then watch the Read Model catch up asynchronously.
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+                {cqrsSyncBenchmarkMs !== null && (
+                  <span style={{
+                    backgroundColor: '#f0fdf4',
+                    color: '#166534',
+                    border: '1px solid #bbf7d0',
+                    padding: '0.4rem 0.85rem',
+                    borderRadius: 'var(--radius-pill)',
+                    fontSize: '0.825rem',
+                    fontWeight: 700,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem'
+                  }}>
+                    <CheckCircle2 size={16} color="#16a34a" /> Read model synced in {cqrsSyncBenchmarkMs} ms
+                  </span>
+                )}
+
+                <button
+                  className="btn-black-pill"
+                  style={{ width: 'auto', padding: '0.55rem 1.1rem', fontSize: '0.85rem' }}
+                  onClick={handleFireTestDeposit}
+                  disabled={cqrsFiringDeposit}
+                >
+                  <Zap size={16} color="#f59e0b" className={cqrsFiringDeposit ? "spin" : ""} />
+                  {cqrsFiringDeposit ? 'Firing Deposit ($10)...' : 'Fire Test Deposit ($10.00)'}
+                </button>
+              </div>
+            </div>
+
+            {modalError && (
+              <div className="warm-error-banner" style={{ marginBottom: '1rem' }}>
+                <AlertTriangle size={18} style={{ flexShrink: 0 }} />
+                <span>{modalError}</span>
+              </div>
+            )}
+
+            {/* Split Screen 2-Column Grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem', flex: 1, overflowY: 'auto' }}>
+              {/* LEFT PANEL: Command Side (Source of Truth) */}
+              <div style={{
+                backgroundColor: '#ffffff',
+                border: '1.5px solid #e2e8f0',
+                borderRadius: '16px',
+                padding: '1.25rem',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                boxShadow: 'var(--shadow-subtle)'
+              }}>
+                <div>
+                  {/* Title & Endpoint Badge */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', paddingBottom: '0.65rem', borderBottom: '1px solid #f1f5f9' }}>
+                    <div>
+                      <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#3b82f6', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        WRITE SIDE (Command Model)
+                      </span>
+                      <h4 style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', marginTop: '0.1rem' }}>
+                        Source of Truth
+                      </h4>
+                    </div>
+                    <span style={{
+                      backgroundColor: '#eff6ff',
+                      color: '#1e40af',
+                      border: '1px solid #bfdbfe',
+                      borderRadius: '6px',
+                      fontSize: '0.72rem',
+                      fontWeight: 600,
+                      padding: '0.2rem 0.5rem',
+                      fontFamily: 'monospace'
+                    }}>
+                      GET /accounts/{'{id}'}
+                    </span>
+                  </div>
+
+                  {/* Architecture Details */}
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '1.25rem', lineHeight: 1.45 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.35rem', color: 'var(--text-dark)', fontWeight: 600 }}>
+                      <Cpu size={15} color="#2563eb" /> Event Store Aggregate Replay
+                    </div>
+                    State computed synchronously by replaying raw events in sequence from the Event Store.
+                  </div>
+
+                  {/* State Cards */}
+                  {cqrsLoadingWrite ? (
+                    <div style={{ padding: '2rem 0', textAlign: 'center', color: 'var(--text-muted)' }}>
+                      <RefreshCw size={20} className="spin" style={{ marginBottom: '0.5rem' }} />
+                      <p style={{ fontSize: '0.8rem' }}>Loading Command State...</p>
+                    </div>
+                  ) : cqrsWriteData ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                      <div style={{ backgroundColor: '#f8fafc', padding: '0.85rem 1rem', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                        <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                          Aggregate Balance
+                        </span>
+                        <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.75rem', fontWeight: 700, color: '#1e293b' }}>
+                          ${Number(cqrsWriteData.balance).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.65rem' }}>
+                        <div style={{ backgroundColor: '#f8fafc', padding: '0.65rem 0.85rem', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block' }}>Aggregate Version</span>
+                          <span style={{ fontWeight: 700, fontSize: '1rem', color: '#2563eb' }}>v{cqrsWriteData.version}</span>
+                        </div>
+                        <div style={{ backgroundColor: '#f8fafc', padding: '0.65rem 0.85rem', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block' }}>Event Count</span>
+                          <span style={{ fontWeight: 700, fontSize: '1rem', color: '#1e293b' }}>{cqrsWriteData.version} Events</span>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+
+                <div style={{ marginTop: '1.25rem', paddingTop: '0.65rem', borderTop: '1px solid #f1f5f9', fontSize: '0.75rem', color: '#64748b' }}>
+                  ⚡ Updates synchronously upon Command receipt.
+                </div>
+              </div>
+
+              {/* RIGHT PANEL: Query Side (Read Model) */}
+              <div style={{
+                backgroundColor: '#ffffff',
+                border: cqrsReadData?.version < cqrsWriteData?.version ? '1.5px solid #f59e0b' : '1.5px solid #bbf7d0',
+                borderRadius: '16px',
+                padding: '1.25rem',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                boxShadow: 'var(--shadow-subtle)',
+                transition: 'border-color 0.2s ease'
+              }}>
+                <div>
+                  {/* Title & Endpoint Badge */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', paddingBottom: '0.65rem', borderBottom: '1px solid #f0fdf4' }}>
+                    <div>
+                      <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#16a34a', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        READ SIDE (Query Projection)
+                      </span>
+                      <h4 style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', marginTop: '0.1rem' }}>
+                        Read Model
+                      </h4>
+                    </div>
+                    <span style={{
+                      backgroundColor: '#f0fdf4',
+                      color: '#166534',
+                      border: '1px solid #bbf7d0',
+                      borderRadius: '6px',
+                      fontSize: '0.72rem',
+                      fontWeight: 600,
+                      padding: '0.2rem 0.5rem',
+                      fontFamily: 'monospace'
+                    }}>
+                      GET /accounts/{'{id}'}/balance-view
+                    </span>
+                  </div>
+
+                  {/* Architecture Details */}
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '1.25rem', lineHeight: 1.45 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.35rem', color: 'var(--text-dark)', fontWeight: 600 }}>
+                      <Layers size={15} color="#16a34a" /> Redis Cache + Postgres Projection
+                    </div>
+                    High-speed read model updated asynchronously via Kafka Domain Event projections.
+                  </div>
+
+                  {/* State Cards */}
+                  {cqrsLoadingRead ? (
+                    <div style={{ padding: '2rem 0', textAlign: 'center', color: 'var(--text-muted)' }}>
+                      <RefreshCw size={20} className="spin" style={{ marginBottom: '0.5rem' }} />
+                      <p style={{ fontSize: '0.8rem' }}>Loading Read Projection...</p>
+                    </div>
+                  ) : cqrsReadData ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                      <div style={{
+                        backgroundColor: cqrsReadData.version < (cqrsWriteData?.version || 0) ? '#fffbeb' : '#f0fdf4',
+                        padding: '0.85rem 1rem',
+                        borderRadius: '12px',
+                        border: cqrsReadData.version < (cqrsWriteData?.version || 0) ? '1px solid #fef3c7' : '1px solid #bbf7d0',
+                        transition: 'all 0.2s ease'
+                      }}>
+                        <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                          Projected Balance
+                        </span>
+                        <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.75rem', fontWeight: 700, color: '#166534' }}>
+                          ${Number(cqrsReadData.balance).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.65rem' }}>
+                        <div style={{ backgroundColor: '#faf8f5', padding: '0.65rem 0.85rem', borderRadius: '10px', border: '1px solid #eee9df' }}>
+                          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block' }}>Read Version</span>
+                          <span style={{ fontWeight: 700, fontSize: '1rem', color: '#16a34a' }}>v{cqrsReadData.version}</span>
+                        </div>
+                        <div style={{ backgroundColor: '#faf8f5', padding: '0.65rem 0.85rem', borderRadius: '10px', border: '1px solid #eee9df' }}>
+                          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block' }}>Sync Status</span>
+                          {cqrsFiringDeposit || (cqrsWriteData && cqrsReadData.version < cqrsWriteData.version) ? (
+                            <span style={{ fontWeight: 700, fontSize: '0.825rem', color: '#d97706', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+                              <RefreshCw size={13} className="spin" /> Syncing...
+                            </span>
+                          ) : (
+                            <span style={{ fontWeight: 700, fontSize: '0.825rem', color: '#16a34a', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+                              <CheckCircle2 size={14} /> Synchronized
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+
+                <div style={{ marginTop: '1.25rem', paddingTop: '0.65rem', borderTop: '1px solid #f0fdf4', fontSize: '0.75rem', color: '#15803d' }}>
+                  {cqrsReadData?.version < cqrsWriteData?.version ? (
+                    <span style={{ color: '#d97706', fontWeight: 600 }}>⚡ Projection lag detected — polling for sync...</span>
+                  ) : (
+                    <span>✓ Fully consistent with Event Store Source of Truth.</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 7: Optimistic Concurrency Control Simulator */}
+      {activeModal === 'concurrency' && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(26, 24, 22, 0.6)',
+          backdropFilter: 'blur(6px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '1.5rem',
+          zIndex: 1000
+        }}>
+          <div className="saas-card" style={{ width: '100%', maxWidth: '840px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: '2rem', overflow: 'hidden' }}>
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', paddingBottom: '0.75rem', borderBottom: '1px solid #f0ece3' }}>
+              <div>
+                <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.35rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Lock size={22} color="#9333ea" /> Optimistic Concurrency Simulator
+                </h3>
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                  Target Account: {modalAccountId}
+                </span>
+              </div>
+              <button onClick={closeModal} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Invariant Explanation Banner */}
+            <div style={{
+              backgroundColor: '#faf5ff',
+              border: '1px solid #e9d5ff',
+              borderRadius: '14px',
+              padding: '0.85rem 1rem',
+              fontSize: '0.85rem',
+              color: '#581c87',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.65rem',
+              marginBottom: '1.25rem',
+              lineHeight: 1.45
+            }}>
+              <ShieldCheck size={22} color="#9333ea" style={{ flexShrink: 0 }} />
+              <span>
+                <strong>Automatic Command Serialization:</strong> Fires two write requests simultaneously. When a version conflict occurs, the Command Handler automatically retries (reloading aggregate at current version, re-validating business rules, and re-appending events) with randomized backoff. Both transactions succeed sequentially without manual client retries or lost updates.
+              </span>
+            </div>
+
+            {/* Interactive Control Bar */}
+            <div style={{
+              backgroundColor: '#faf8f5',
+              border: '1px solid #eee9df',
+              borderRadius: '16px',
+              padding: '1rem 1.25rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: '1.25rem',
+              flexWrap: 'wrap',
+              gap: '0.75rem'
+            }}>
+              <div>
+                <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-dark)', display: 'block' }}>
+                  Race Condition Simulation
+                </span>
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                  Dispatches two <code>POST /deposit ($50.00)</code> requests to the same aggregate concurrently.
+                </span>
+              </div>
+
+              <button
+                className="btn-black-pill"
+                style={{ width: 'auto', padding: '0.65rem 1.25rem', fontSize: '0.875rem', backgroundColor: '#6b21a8' }}
+                onClick={handleSimulateConcurrency}
+                disabled={concurrencyExecuting}
+              >
+                <Zap size={16} color="#f59e0b" className={concurrencyExecuting ? "spin" : ""} />
+                {concurrencyExecuting ? 'Firing Race Condition...' : 'Simulate Concurrent Writes ($50)'}
+              </button>
+            </div>
+
+            {modalError && (
+              <div className="warm-error-banner" style={{ marginBottom: '1rem' }}>
+                <AlertTriangle size={18} style={{ flexShrink: 0 }} />
+                <span>{modalError}</span>
+              </div>
+            )}
+
+            {/* Side-by-Side 2-Column Results Display */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem', flex: 1, overflowY: 'auto' }}>
+              {/* REQUEST 1 PANEL */}
+              <div style={{
+                backgroundColor: '#ffffff',
+                border: concurrencyResult1?.status === 200 ? '1.5px solid #bbf7d0' : concurrencyResult1?.status === 409 ? '1.5px solid #fecaca' : '1.5px solid #e2e8f0',
+                borderRadius: '16px',
+                padding: '1.25rem',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                boxShadow: 'var(--shadow-subtle)'
+              }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', paddingBottom: '0.65rem', borderBottom: '1px solid #f1f5f9' }}>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--text-dark)' }}>
+                      CONCURRENT WRITE #1
+                    </span>
+                    {concurrencyResult1 ? (
+                      <span style={{
+                        backgroundColor: concurrencyResult1.status === 200 ? '#f0fdf4' : '#fef2f2',
+                        color: concurrencyResult1.status === 200 ? '#166534' : '#991b1b',
+                        border: concurrencyResult1.status === 200 ? '1px solid #bbf7d0' : '1px solid #fecaca',
+                        borderRadius: '6px',
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        padding: '0.2rem 0.65rem',
+                        fontFamily: 'monospace'
+                      }}>
+                        {concurrencyResult1.statusText}
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Idle</span>
+                    )}
+                  </div>
+
+                  {!concurrencyResult1 ? (
+                    <div style={{ padding: '2rem 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                      Click <strong>Simulate Concurrent Writes</strong> to fire Request #1.
+                    </div>
+                  ) : concurrencyResult1.status === 200 ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                      <div style={{ backgroundColor: '#f0fdf4', padding: '0.85rem 1rem', borderRadius: '12px', border: '1px solid #bbf7d0' }}>
+                        <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#166534', textTransform: 'uppercase' }}>
+                          Committed Balance
+                        </span>
+                        <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.65rem', fontWeight: 700, color: '#166534' }}>
+                          ${Number(concurrencyResult1.data.balance).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </div>
+                      </div>
+                      <div style={{ backgroundColor: '#faf8f5', padding: '0.65rem 0.85rem', borderRadius: '10px', border: '1px solid #eee9df' }}>
+                        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block' }}>New Version</span>
+                        <span style={{ fontWeight: 700, fontSize: '1rem', color: '#16a34a' }}>v{concurrencyResult1.data.version}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ backgroundColor: '#fef2f2', padding: '0.85rem 1rem', borderRadius: '12px', border: '1px solid #fecaca' }}>
+                      <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#991b1b', display: 'block', marginBottom: '0.35rem' }}>
+                        {concurrencyResult1.data?.error || 'Optimistic Lock Abort'}
+                      </span>
+                      <p style={{ fontSize: '0.78rem', color: '#991b1b', margin: 0, lineHeight: 1.4, fontFamily: 'monospace' }}>
+                        {concurrencyResult1.error}
+                      </p>
+                    </div>
+                  )}
+                </div>
+                <div style={{ marginTop: '1.25rem', paddingTop: '0.65rem', borderTop: '1px solid #f1f5f9', fontSize: '0.75rem', color: '#64748b' }}>
+                  {concurrencyResult1?.timestamp ? `Executed at ${concurrencyResult1.timestamp}` : 'Ready for test'}
+                </div>
+              </div>
+
+              {/* REQUEST 2 PANEL */}
+              <div style={{
+                backgroundColor: '#ffffff',
+                border: concurrencyResult2?.status === 409 ? '1.5px solid #fecaca' : concurrencyResult2?.status === 200 ? '1.5px solid #bbf7d0' : '1.5px solid #e2e8f0',
+                borderRadius: '16px',
+                padding: '1.25rem',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                boxShadow: 'var(--shadow-subtle)'
+              }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', paddingBottom: '0.65rem', borderBottom: '1px solid #f1f5f9' }}>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--text-dark)' }}>
+                      CONCURRENT WRITE #2
+                    </span>
+                    {concurrencyResult2 ? (
+                      <span style={{
+                        backgroundColor: concurrencyResult2.status === 409 ? '#fef2f2' : '#f0fdf4',
+                        color: concurrencyResult2.status === 409 ? '#991b1b' : '#166534',
+                        border: concurrencyResult2.status === 409 ? '1px solid #fecaca' : '1px solid #bbf7d0',
+                        borderRadius: '6px',
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        padding: '0.2rem 0.65rem',
+                        fontFamily: 'monospace'
+                      }}>
+                        {concurrencyResult2.statusText}
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Idle</span>
+                    )}
+                  </div>
+
+                  {!concurrencyResult2 ? (
+                    <div style={{ padding: '2rem 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                      Click <strong>Simulate Concurrent Writes</strong> to fire Request #2.
+                    </div>
+                  ) : concurrencyResult2.status === 409 ? (
+                    <div style={{ backgroundColor: '#fef2f2', padding: '0.85rem 1rem', borderRadius: '12px', border: '1px solid #fecaca' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: '#991b1b', fontWeight: 700, fontSize: '0.825rem', marginBottom: '0.4rem' }}>
+                        <ShieldAlert size={16} /> {concurrencyResult2.data?.error || 'Conflict - Optimistic Locking Error'}
+                      </div>
+                      <p style={{ fontSize: '0.78rem', color: '#991b1b', margin: 0, lineHeight: 1.45, fontFamily: 'monospace' }}>
+                        {concurrencyResult2.error}
+                      </p>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                      <div style={{ backgroundColor: '#f0fdf4', padding: '0.85rem 1rem', borderRadius: '12px', border: '1px solid #bbf7d0' }}>
+                        <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#166534', textTransform: 'uppercase' }}>
+                          Committed Balance
+                        </span>
+                        <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.65rem', fontWeight: 700, color: '#166534' }}>
+                          ${Number(concurrencyResult2.data.balance).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </div>
+                      </div>
+                      <div style={{ backgroundColor: '#faf8f5', padding: '0.65rem 0.85rem', borderRadius: '10px', border: '1px solid #eee9df' }}>
+                        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block' }}>New Version</span>
+                        <span style={{ fontWeight: 700, fontSize: '1rem', color: '#16a34a' }}>v{concurrencyResult2.data.version}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <div style={{ marginTop: '1.25rem', paddingTop: '0.65rem', borderTop: '1px solid #f1f5f9', fontSize: '0.75rem', color: '#64748b' }}>
+                  {concurrencyResult2?.timestamp ? `Executed at ${concurrencyResult2.timestamp}` : 'Ready for test'}
+                </div>
+              </div>
+            </div>
+
+            {/* Proof Result Summary Footer */}
+            {concurrencyResult1 && concurrencyResult2 && (
+              <div style={{
+                marginTop: '1.25rem',
+                padding: '0.85rem 1.1rem',
+                borderRadius: '14px',
+                backgroundColor: (concurrencyResult1.status === 200 && concurrencyResult2.status === 200) ? '#f0fdf4' : '#fffbeb',
+                border: (concurrencyResult1.status === 200 && concurrencyResult2.status === 200) ? '1px solid #bbf7d0' : '1px solid #fef3c7',
+                fontSize: '0.85rem',
+                color: (concurrencyResult1.status === 200 && concurrencyResult2.status === 200) ? '#166534' : '#92400e',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.65rem'
+              }}>
+                <CheckCircle2 size={20} color={(concurrencyResult1.status === 200 && concurrencyResult2.status === 200) ? '#16a34a' : '#d97706'} style={{ flexShrink: 0 }} />
+                <span>
+                  {(concurrencyResult1.status === 200 && concurrencyResult2.status === 200) ? (
+                    <strong>PROVED AUTOMATIC CONCURRENCY SERIALIZATION: Both concurrent write commands succeeded (HTTP 200) sequentially via automatic retry-on-conflict!</strong>
+                  ) : (
+                    <strong>Version Conflict Exhausted: Retries exceeded max limit. Check backend server logs for retry breakdown.</strong>
+                  )}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
+

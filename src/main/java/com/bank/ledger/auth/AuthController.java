@@ -5,6 +5,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -48,4 +49,28 @@ public class AuthController {
         String token = tokenProvider.generateToken(user.getUsername(), user.getRole());
         return ResponseEntity.ok(new DTOs.LoginResponse(token, user.getUsername(), user.getRole()));
     }
+
+    @Operation(
+            summary = "Register a new user account",
+            description = "Creates a new user account with BCrypt hashed password and issues a signed JWT token."
+    )
+    @ApiResponse(responseCode = "201", description = "Registration successful - JWT token returned")
+    @ApiResponse(responseCode = "400", description = "Username already taken or invalid input")
+    @PostMapping("/register")
+    public ResponseEntity<DTOs.LoginResponse> register(@Valid @RequestBody DTOs.RegisterRequest request) {
+        if (userRepository.findByUsername(request.username().trim()).isPresent()) {
+            throw new IllegalArgumentException("Username '" + request.username().trim() + "' is already taken.");
+        }
+
+        String role = (request.role() != null && request.role().trim().equalsIgnoreCase("ADMIN")) ? "ADMIN" : "CUSTOMER";
+        String encodedPassword = passwordEncoder.encode(request.password());
+
+        UserEntity user = new UserEntity(request.username().trim(), encodedPassword, role);
+        userRepository.save(user);
+
+        String token = tokenProvider.generateToken(user.getUsername(), user.getRole());
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(new DTOs.LoginResponse(token, user.getUsername(), user.getRole()));
+    }
 }
+

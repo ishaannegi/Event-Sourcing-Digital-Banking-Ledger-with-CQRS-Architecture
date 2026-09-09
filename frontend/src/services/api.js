@@ -30,6 +30,11 @@ export const loginApi = async (username, password) => {
   return response.data;
 };
 
+export const registerApi = async (username, password, role = 'CUSTOMER') => {
+  const response = await api.post('/auth/register', { username, password, role });
+  return response.data;
+};
+
 export const getAccountApi = async (accountId) => {
   const response = await api.get(`/accounts/${accountId}`);
   return response.data;
@@ -62,6 +67,20 @@ export const transferApi = async (fromAccountId, toAccountId, amount) => {
 
 export const getAccountEventsApi = async (accountId) => {
   const response = await api.get(`/accounts/${accountId}/events`);
+  return response.data;
+};
+
+export const getHistoricalBalanceApi = async (accountId, timestamp) => {
+  const response = await api.get(`/audit/accounts/${accountId}/balance-at`, {
+    params: { timestamp }
+  });
+  return response.data;
+};
+
+export const getRegulatoryReportApi = async (from, to) => {
+  const response = await api.get('/audit/report', {
+    params: { from, to }
+  });
   return response.data;
 };
 

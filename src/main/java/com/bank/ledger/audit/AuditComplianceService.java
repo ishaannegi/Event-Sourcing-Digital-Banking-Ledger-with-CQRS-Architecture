@@ -47,12 +47,17 @@ public class AuditComplianceService {
         }
 
         List<DomainEvent> filteredEvents = new ArrayList<>();
+        long maxVersion = 0L;
         for (AuditLogEntity entity : logs) {
             try {
                 DomainEvent event = objectMapper.readValue(entity.getPayload(), DomainEvent.class);
+                Instant eventTime = entity.getReceivedAt() != null ? entity.getReceivedAt() : event.getTimestamp();
                 // Include event if its timestamp is <= targetTimestamp
-                if (!event.getTimestamp().isAfter(targetTimestamp)) {
+                if (eventTime != null && !eventTime.isAfter(targetTimestamp)) {
                     filteredEvents.add(event);
+                    if (entity.getVersion() != null && entity.getVersion() > maxVersion) {
+                        maxVersion = entity.getVersion();
+                    }
                 }
             } catch (Exception e) {
                 log.error("[AUDIT SERVICE] Failed to deserialize audit payload for aggregate [{}]: {}", accountId, e.getMessage());
@@ -71,12 +76,13 @@ public class AuditComplianceService {
         }
 
         AccountAggregate aggregate = AccountAggregate.replay(filteredEvents);
+        long responseVersion = maxVersion > 0 ? maxVersion : aggregate.getVersion();
 
         return new DTOs.HistoricalBalanceResponse(
-                aggregate.getAccountId(),
-                aggregate.getOwnerName(),
+                aggregate.getAccountId() != null ? aggregate.getAccountId() : accountId,
+                aggregate.getOwnerName() != null ? aggregate.getOwnerName() : "N/A",
                 aggregate.getBalance(),
-                aggregate.getVersion(),
+                responseVersion,
                 targetTimestamp,
                 filteredEvents.size()
         );

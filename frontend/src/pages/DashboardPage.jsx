@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { getAccountApi } from '../services/api';
 import AccountsPage from './AccountsPage';
+import AuditTrailPage from './AuditTrailPage';
 import {
   LayoutDashboard,
   CreditCard,
@@ -26,7 +27,7 @@ export default function DashboardPage() {
 
   const isAdmin = role === 'ADMIN' || role === 'ROLE_ADMIN';
 
-  const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard' | 'accounts'
+  const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard' | 'accounts' | 'audit'
 
   const [accountIdInput, setAccountIdInput] = useState('');
   const [apiResult, setApiResult] = useState(null);
@@ -91,11 +92,17 @@ export default function DashboardPage() {
               <span className="nav-badge">Soon</span>
             </a>
 
-            <a className="nav-item" onClick={(e) => e.preventDefault()}>
-              <ShieldAlert size={18} />
-              <span>Audit Trail</span>
-              <span className="nav-badge">Admin</span>
-            </a>
+            {/* Audit Trail Tab - ADMIN Role Only */}
+            {isAdmin && (
+              <a
+                className={`nav-item ${activeTab === 'audit' ? 'active' : ''}`}
+                onClick={(e) => { e.preventDefault(); setActiveTab('audit'); }}
+              >
+                <ShieldAlert size={18} />
+                <span>Audit Trail</span>
+                <span className="nav-badge" style={{ backgroundColor: '#fef3c7', color: '#92400e' }}>Admin</span>
+              </a>
+            )}
           </nav>
         </div>
 
@@ -131,6 +138,8 @@ export default function DashboardPage() {
       <main className="dashboard-main">
         {activeTab === 'accounts' ? (
           <AccountsPage />
+        ) : activeTab === 'audit' && isAdmin ? (
+          <AuditTrailPage />
         ) : (
           <>
             {/* Topbar */}

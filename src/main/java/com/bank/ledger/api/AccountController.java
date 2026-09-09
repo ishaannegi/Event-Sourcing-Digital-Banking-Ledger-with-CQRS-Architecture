@@ -211,31 +211,46 @@ public class AccountController {
     @ApiResponse(responseCode = "404", description = "Account projection not found")
     @GetMapping("/{id}/balance-view")
     public ResponseEntity<DTOs.AccountResponse> getAccountBalanceView(@PathVariable("id") String accountId) {
-        // 1. Check Redis Cache (Cache-Aside)
-        Optional<DTOs.AccountResponse> cachedResponse = accountCacheService.get(accountId);
-        if (cachedResponse.isPresent()) {
-            validateAccountOwnership(cachedResponse.get().ownerName());
-            log.info("[CACHE HIT] Serving account [{}] from Redis cache", accountId);
-            return ResponseEntity.ok(cachedResponse.get());
-        }
+        long tStart = System.nanoTime();
+        try {
+            // 1. Check Redis Cache (Cache-Aside)
+            Optional<DTOs.AccountResponse> cachedResponse = accountCacheService.get(accountId);
+            if (cachedResponse.isPresent()) {
+                validateAccountOwnership(cachedResponse.get().ownerName());
+                long totalUs = (System.nanoTime() - tStart) / 1000;
+                log.info("[SPRING MVC TIMING BREAKDOWN] Account [{}] - Total Cache-Hit Endpoint Time: {} ms ({} us)",
+                        accountId, String.format("%.3f", totalUs / 1000.0), totalUs);
+                return ResponseEntity.ok(cachedResponse.get());
+            }
 
-        // 2. Cache Miss: Fall back to PostgreSQL Read Model
-        log.info("[CACHE MISS] Querying PostgreSQL account_balances for account [{}]", accountId);
-        return accountBalanceRepository.findById(accountId)
-                .map(entity -> {
-                    validateAccountOwnership(entity.getOwnerName());
-                    DTOs.AccountResponse response = new DTOs.AccountResponse(
-                            entity.getAccountId(),
-                            entity.getOwnerName(),
-                            entity.getBalance(),
-                            entity.getLastAppliedVersion()
-                    );
-                    // Populate Redis cache on miss
-                    accountCacheService.put(accountId, response);
-                    return response;
-                })
-                .map(ResponseEntity::ok)
-                .orElseGet(() -> ResponseEntity.notFound().build());
+            // 2. Cache Miss: Fall back to PostgreSQL Read Model
+            log.info("[CACHE MISS] Querying PostgreSQL account_balances for account [{}]", accountId);
+            ResponseEntity<DTOs.AccountResponse> result = accountBalanceRepository.findById(accountId)
+                    .map(entity -> {
+                        validateAccountOwnership(entity.getOwnerName());
+                        DTOs.AccountResponse response = new DTOs.AccountResponse(
+                                entity.getAccountId(),
+                                entity.getOwnerName(),
+                                entity.getBalance(),
+                                entity.getLastAppliedVersion()
+                        );
+                        // Populate Redis cache on miss
+                        accountCacheService.put(accountId, response);
+                        return response;
+                    })
+                    .map(ResponseEntity::ok)
+                    .orElseGet(() -> ResponseEntity.notFound().build());
+
+            long totalUs = (System.nanoTime() - tStart) / 1000;
+            log.info("[SPRING MVC TIMING BREAKDOWN] Account [{}] - Total Cache-Miss Endpoint Time: {} ms ({} us)",
+                    accountId, String.format("%.3f", totalUs / 1000.0), totalUs);
+            return result;
+        } catch (Exception e) {
+            long totalUs = (System.nanoTime() - tStart) / 1000;
+            log.info("[SPRING MVC TIMING BREAKDOWN] Account [{}] - Total Exception Endpoint Time: {} ms ({} us)",
+                    accountId, String.format("%.3f", totalUs / 1000.0), totalUs);
+            throw e;
+        }
     }
 
     @Operation(

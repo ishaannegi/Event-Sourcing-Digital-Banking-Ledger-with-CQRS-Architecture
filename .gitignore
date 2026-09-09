@@ -19,3 +19,8 @@ target/
 ### OS ###
 .DS_Store
 Thumbs.db
+
+### Local Dev Scratch & Frontend ###
+scratch/
+frontend/node_modules/
+frontend/dist/

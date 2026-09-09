@@ -41,11 +41,9 @@ public class AccountAggregate {
         } else if (event instanceof FundsWithdrawnEvent e) {
             this.balance = this.balance.subtract(e.getAmount());
         } else if (event instanceof TransferInitiatedEvent e) {
-            if (this.accountId != null && this.accountId.equals(e.getFromAccountId())) {
-                this.balance = this.balance.subtract(e.getAmount());
-            } else if (this.accountId != null && this.accountId.equals(e.getToAccountId())) {
-                this.balance = this.balance.add(e.getAmount());
-            }
+            // Balance adjustment is already handled by accompanying FundsWithdrawnEvent (debit)
+            // and FundsDepositedEvent (credit). TransferInitiatedEvent serves as the double-entry
+            // linking event and does not mutate balance to prevent double-deduction.
         }
     }
 

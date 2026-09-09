@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { loginApi, setAuthToken } from '../services/api';
+import { loginApi, registerApi, setAuthToken } from '../services/api';
 
 const AuthContext = createContext(null);
 
@@ -40,6 +40,30 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const register = async (username, password, role = 'CUSTOMER') => {
+    try {
+      const data = await registerApi(username, password, role);
+      setAuthToken(data.token);
+      setAuth({
+        token: data.token,
+        username: data.username,
+        role: data.role,
+        isAuthenticated: true,
+      });
+      return { success: true, user: data };
+    } catch (error) {
+      setAuthToken(null);
+      setAuth({
+        token: null,
+        username: null,
+        role: null,
+        isAuthenticated: false,
+      });
+      const errorMessage = error.response?.data?.message || error.response?.data?.error || 'Registration failed';
+      return { success: false, error: errorMessage, status: error.response?.status };
+    }
+  };
+
   const logout = () => {
     setAuthToken(null);
     setAuth({
@@ -51,7 +75,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ ...auth, login, logout }}>
+    <AuthContext.Provider value={{ ...auth, login, register, logout }}>
       {children}
     </AuthContext.Provider>
   );

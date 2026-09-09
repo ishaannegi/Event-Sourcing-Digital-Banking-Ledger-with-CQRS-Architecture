@@ -371,6 +371,28 @@ body {
 }
 
 /* Inputs & Buttons */
+.brand-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.15rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dark);
+  margin-bottom: 2.25rem;
+}
+
+.brand-icon {
+  color: var(--accent-gold);
+  font-size: 1.35rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
 .form-panel {
   background: linear-gradient(180deg, #faf7f2 0%, #f4efe4 100%);
   border-radius: var(--radius-card);

@@ -49,6 +49,16 @@ public class DTOs {
             String password
     ) {}
 
+    public record RegisterRequest(
+            @NotBlank(message = "Username is required")
+            String username,
+
+            @NotBlank(message = "Password is required")
+            String password,
+
+            String role
+    ) {}
+
     public record LoginResponse(String token, String username, String role) {}
 
     public record HistoricalBalanceResponse(

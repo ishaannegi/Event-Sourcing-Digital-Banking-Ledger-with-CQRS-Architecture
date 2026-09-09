@@ -29,8 +29,14 @@ spring:
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
   data:
     redis:
-      host: localhost
+      host: 127.0.0.1
       port: 6379
+      lettuce:
+        pool:
+          max-active: 16
+          max-idle: 8
+          min-idle: 2
+          max-wait: 2000ms
 
 server:
   port: 8080
