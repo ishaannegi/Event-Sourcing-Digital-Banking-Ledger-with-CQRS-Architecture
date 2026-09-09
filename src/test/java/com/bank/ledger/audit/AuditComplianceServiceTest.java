@@ -54,12 +54,17 @@ class AuditComplianceServiceTest {
         assertEquals(new BigDecimal("1500.00"), responseT1.balance());
         assertEquals(2L, responseT1.version());
         assertEquals(2, responseT1.eventsReplayedCount());
+        assertNotNull(responseT1.replayedEvents());
+        assertEquals(2, responseT1.replayedEvents().size());
+        assertEquals(new BigDecimal("1500.00"), responseT1.replayedEvents().get(1).runningBalance());
 
         // Reconstruct at t2 -> Should include e0, e1, and e2 ($1300)
         DTOs.HistoricalBalanceResponse responseT2 = service.reconstructBalanceAt(accountId, t2);
         assertEquals(new BigDecimal("1300.00"), responseT2.balance());
         assertEquals(3L, responseT2.version());
         assertEquals(3, responseT2.eventsReplayedCount());
+        assertEquals(3, responseT2.replayedEvents().size());
+        assertEquals(new BigDecimal("1300.00"), responseT2.replayedEvents().get(2).runningBalance());
     }
 
     @Test

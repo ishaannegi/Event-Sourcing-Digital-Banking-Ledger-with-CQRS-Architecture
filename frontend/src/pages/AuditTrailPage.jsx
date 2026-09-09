@@ -15,7 +15,10 @@ import {
   DollarSign,
   User,
   Layers,
-  ArrowRight
+  ArrowRight,
+  ChevronDown,
+  ChevronUp,
+  Download
 } from 'lucide-react';
 
 export default function AuditTrailPage() {
@@ -28,6 +31,7 @@ export default function AuditTrailPage() {
   const [pitResult, setPitResult] = useState(null);
   const [pitLoading, setPitLoading] = useState(false);
   const [pitError, setPitError] = useState(null);
+  const [showBreakdown, setShowBreakdown] = useState(false);
 
   // Regulatory report state
   const [reportFrom, setReportFrom] = useState(() => {
@@ -99,6 +103,26 @@ export default function AuditTrailPage() {
     }
   };
 
+  const downloadCsv = () => {
+    if (!pitResult || !pitResult.replayedEvents || pitResult.replayedEvents.length === 0) return;
+    const headers = ['version', 'event_type', 'amount', 'running_balance', 'timestamp'];
+    const rows = pitResult.replayedEvents.map(e => [
+      e.version,
+      e.eventType,
+      e.amount,
+      e.runningBalance,
+      `"${new Date(e.timestamp).toISOString()}"`
+    ]);
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `audit_replay_${pitResult.accountId}_v${pitResult.version}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       {/* Topbar */}
@@ -148,6 +172,31 @@ export default function AuditTrailPage() {
                   onChange={(e) => setPitAccountId(e.target.value)}
                 />
               </div>
+
+              {/* Quick Account Selector Chips */}
+              {reportResult && reportResult.accountTransactionCounts && Object.keys(reportResult.accountTransactionCounts).length > 0 && (
+                <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Quick Select:</span>
+                  {Object.keys(reportResult.accountTransactionCounts).slice(0, 3).map(accId => (
+                    <button
+                      key={accId}
+                      type="button"
+                      onClick={() => setPitAccountId(accId)}
+                      style={{
+                        fontSize: '0.7rem',
+                        padding: '0.15rem 0.45rem',
+                        borderRadius: '4px',
+                        backgroundColor: '#f1f5f9',
+                        border: '1px solid #cbd5e1',
+                        cursor: 'pointer',
+                        fontFamily: 'monospace'
+                      }}
+                    >
+                      {accId.slice(0, 8)}...
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div>
@@ -239,9 +288,128 @@ export default function AuditTrailPage() {
               </div>
             </div>
 
-            <div style={{ marginTop: '1rem', paddingTop: '0.75rem', borderTop: '1px solid #e8e4db', fontSize: '0.78rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              <Clock size={14} /> As-Of Timestamp: <strong>{new Date(pitResult.asOfTimestamp).toLocaleString()}</strong>
+            <div style={{ marginTop: '1rem', paddingTop: '0.75rem', borderTop: '1px solid #e8e4db', fontSize: '0.78rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <Clock size={14} /> As-Of Timestamp: <strong>{new Date(pitResult.asOfTimestamp).toLocaleString()}</strong>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                {pitResult.replayedEvents && pitResult.replayedEvents.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={downloadCsv}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.35rem',
+                      backgroundColor: 'var(--accent-black)',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: '6px',
+                      padding: '0.35rem 0.75rem',
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <Download size={14} /> Export CSV
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setShowBreakdown(!showBreakdown)}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.35rem',
+                    backgroundColor: '#ffffff',
+                    border: '1px solid #dcd6cd',
+                    borderRadius: '6px',
+                    padding: '0.35rem 0.75rem',
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    color: 'var(--text-dark)',
+                    cursor: 'pointer'
+                  }}
+                >
+                  {showBreakdown ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  <span>{showBreakdown ? 'Hide Breakdown' : `View Replay Breakdown (${pitResult.eventsReplayedCount})`}</span>
+                </button>
+              </div>
             </div>
+
+            {/* Expandable Replay Breakdown Table (Matching Image 3) */}
+            {showBreakdown && pitResult.replayedEvents && pitResult.replayedEvents.length > 0 && (
+              <div style={{
+                marginTop: '1rem',
+                backgroundColor: '#ffffff',
+                borderRadius: '12px',
+                border: '1px solid #e8e4db',
+                overflow: 'hidden',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.03)'
+              }}>
+                <div style={{ padding: '0.65rem 1rem', backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-dark)', letterSpacing: '0.03em', textTransform: 'uppercase' }}>
+                    Step-by-step Event Audit Trail & Running Balance (Up to As-Of Timestamp)
+                  </span>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                    {pitResult.replayedEvents.length} rows
+                  </span>
+                </div>
+
+                <div style={{ maxHeight: '380px', overflowY: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', fontFamily: 'monospace' }}>
+                    <thead>
+                      <tr style={{ backgroundColor: '#1e293b', color: '#f8fafc', textAlign: 'left', position: 'sticky', top: 0, zIndex: 10 }}>
+                        <th style={{ padding: '0.65rem 0.85rem', fontWeight: 600 }}>version</th>
+                        <th style={{ padding: '0.65rem 0.85rem', fontWeight: 600 }}>event_type</th>
+                        <th style={{ padding: '0.65rem 0.85rem', fontWeight: 600, textAlign: 'right' }}>amount</th>
+                        <th style={{ padding: '0.65rem 0.85rem', fontWeight: 600, textAlign: 'right' }}>running_balance</th>
+                        <th style={{ padding: '0.65rem 0.85rem', fontWeight: 600, textAlign: 'center' }}>timestamp</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pitResult.replayedEvents.map((evt, idx) => {
+                        const isDeposit = evt.eventType === 'FundsDepositedEvent' || evt.eventType === 'AccountOpenedEvent';
+                        const isWithdraw = evt.eventType === 'FundsWithdrawnEvent';
+                        const isTransfer = evt.eventType === 'TransferInitiatedEvent';
+                        const amountColor = isDeposit ? '#15803d' : isWithdraw ? '#b91c1c' : '#475569';
+                        const sign = isDeposit ? '+' : isWithdraw ? '-' : '';
+
+                        return (
+                          <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9', backgroundColor: idx % 2 === 0 ? '#ffffff' : '#f8fafc' }}>
+                            <td style={{ padding: '0.6rem 0.85rem', fontWeight: 700, color: 'var(--accent-gold)' }}>
+                              {evt.version}
+                            </td>
+                            <td style={{ padding: '0.6rem 0.85rem', color: '#0f172a', fontWeight: 600 }}>
+                              <span style={{
+                                padding: '0.15rem 0.45rem',
+                                borderRadius: '4px',
+                                backgroundColor: isDeposit ? '#f0fdf4' : isWithdraw ? '#fef2f2' : '#f1f5f9',
+                                color: isDeposit ? '#166534' : isWithdraw ? '#991b1b' : '#334155',
+                                fontSize: '0.78rem'
+                              }}>
+                                {evt.eventType}
+                              </span>
+                            </td>
+                            <td style={{ padding: '0.6rem 0.85rem', textAlign: 'right', fontWeight: 700, color: amountColor }}>
+                              {isTransfer ? `$${Number(evt.amount).toFixed(2)} (Ref)` : `${sign}$${Number(evt.amount).toFixed(2)}`}
+                            </td>
+                            <td style={{ padding: '0.6rem 0.85rem', textAlign: 'right', fontWeight: 700, color: '#0f172a' }}>
+                              ${Number(evt.runningBalance).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                            <td style={{ padding: '0.6rem 0.85rem', textAlign: 'center', color: '#64748b', fontSize: '0.75rem' }}>
+                              {new Date(evt.timestamp).toLocaleString()}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

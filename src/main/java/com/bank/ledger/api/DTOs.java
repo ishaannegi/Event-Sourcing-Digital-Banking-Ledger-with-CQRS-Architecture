@@ -61,13 +61,22 @@ public class DTOs {
 
     public record LoginResponse(String token, String username, String role) {}
 
+    public record HistoricalEventDetail(
+            long version,
+            String eventType,
+            BigDecimal amount,
+            BigDecimal runningBalance,
+            java.time.Instant timestamp
+    ) {}
+
     public record HistoricalBalanceResponse(
             String accountId,
             String ownerName,
             BigDecimal balance,
             long version,
             java.time.Instant asOfTimestamp,
-            int eventsReplayedCount
+            int eventsReplayedCount,
+            java.util.List<HistoricalEventDetail> replayedEvents
     ) {}
 
     public record RegulatoryReportResponse(
@@ -81,6 +90,6 @@ public class DTOs {
 
     public record AccountResponse(String accountId, String ownerName, BigDecimal balance, long version) {}
     public record TransferResponse(String transferId, String fromAccountId, String toAccountId, BigDecimal amount, String status) {}
-    public record EventLogResponse(String id, String aggregateId, String eventType, String payload, long version, java.time.Instant createdAt) {}
+    public record EventLogResponse(String id, String aggregateId, String eventType, String payload, long version, java.time.Instant createdAt, BigDecimal amount, BigDecimal runningBalance) {}
     public record ErrorResponse(int status, String error, String message, long timestamp) {}
 }

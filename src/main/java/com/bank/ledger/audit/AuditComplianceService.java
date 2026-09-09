@@ -47,7 +47,10 @@ public class AuditComplianceService {
         }
 
         List<DomainEvent> filteredEvents = new ArrayList<>();
+        List<DTOs.HistoricalEventDetail> replayedDetails = new ArrayList<>();
         long maxVersion = 0L;
+        BigDecimal runningBalance = BigDecimal.ZERO;
+
         for (AuditLogEntity entity : logs) {
             try {
                 DomainEvent event = objectMapper.readValue(entity.getPayload(), DomainEvent.class);
@@ -58,6 +61,29 @@ public class AuditComplianceService {
                     if (entity.getVersion() != null && entity.getVersion() > maxVersion) {
                         maxVersion = entity.getVersion();
                     }
+
+                    BigDecimal deltaAmount = BigDecimal.ZERO;
+                    if (event instanceof AccountOpenedEvent e) {
+                        deltaAmount = e.getInitialBalance() != null ? e.getInitialBalance() : BigDecimal.ZERO;
+                        runningBalance = runningBalance.add(deltaAmount);
+                    } else if (event instanceof FundsDepositedEvent e) {
+                        deltaAmount = e.getAmount() != null ? e.getAmount() : BigDecimal.ZERO;
+                        runningBalance = runningBalance.add(deltaAmount);
+                    } else if (event instanceof FundsWithdrawnEvent e) {
+                        deltaAmount = e.getAmount() != null ? e.getAmount() : BigDecimal.ZERO;
+                        runningBalance = runningBalance.subtract(deltaAmount);
+                    } else if (event instanceof TransferInitiatedEvent e) {
+                        deltaAmount = e.getAmount() != null ? e.getAmount() : BigDecimal.ZERO;
+                        // Balance adjustment already reflected by FundsWithdrawnEvent (debit)
+                    }
+
+                    replayedDetails.add(new DTOs.HistoricalEventDetail(
+                            entity.getVersion() != null ? entity.getVersion() : (replayedDetails.size() + 1L),
+                            event.getEventType(),
+                            deltaAmount,
+                            runningBalance,
+                            eventTime
+                    ));
                 }
             } catch (Exception e) {
                 log.error("[AUDIT SERVICE] Failed to deserialize audit payload for aggregate [{}]: {}", accountId, e.getMessage());
@@ -71,7 +97,8 @@ public class AuditComplianceService {
                     BigDecimal.ZERO,
                     0L,
                     targetTimestamp,
-                    0
+                    0,
+                    List.of()
             );
         }
 
@@ -84,7 +111,8 @@ public class AuditComplianceService {
                 aggregate.getBalance(),
                 responseVersion,
                 targetTimestamp,
-                filteredEvents.size()
+                filteredEvents.size(),
+                replayedDetails
         );
     }
 

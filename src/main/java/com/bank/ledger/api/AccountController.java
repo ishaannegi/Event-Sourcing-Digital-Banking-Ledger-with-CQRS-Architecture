@@ -41,15 +41,18 @@ public class AccountController {
     private final AccountBalanceRepository accountBalanceRepository;
     private final AccountCacheService accountCacheService;
     private final EventStoreService eventStoreService;
+    private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
 
     public AccountController(AccountCommandHandler commandHandler,
                              AccountBalanceRepository accountBalanceRepository,
                              AccountCacheService accountCacheService,
-                             EventStoreService eventStoreService) {
+                             EventStoreService eventStoreService,
+                             com.fasterxml.jackson.databind.ObjectMapper objectMapper) {
         this.commandHandler = commandHandler;
         this.accountBalanceRepository = accountBalanceRepository;
         this.accountCacheService = accountCacheService;
         this.eventStoreService = eventStoreService;
+        this.objectMapper = objectMapper;
     }
 
     @Operation(
@@ -270,16 +273,40 @@ public class AccountController {
         validateAccountOwnership(aggregate.getOwnerName());
 
         List<EventEntity> entities = eventStoreService.loadEventEntities(accountId);
-        List<DTOs.EventLogResponse> responseList = entities.stream()
-                .map(e -> new DTOs.EventLogResponse(
-                        e.getId() != null ? e.getId().toString() : null,
-                        e.getAggregateId(),
-                        e.getEventType(),
-                        e.getPayload(),
-                        e.getVersion(),
-                        e.getCreatedAt()
-                ))
-                .toList();
+        List<DTOs.EventLogResponse> responseList = new java.util.ArrayList<>();
+        java.math.BigDecimal runningBalance = java.math.BigDecimal.ZERO;
+
+        for (EventEntity e : entities) {
+            java.math.BigDecimal deltaAmount = java.math.BigDecimal.ZERO;
+            try {
+                com.bank.ledger.events.DomainEvent event = objectMapper.readValue(e.getPayload(), com.bank.ledger.events.DomainEvent.class);
+                if (event instanceof com.bank.ledger.events.AccountOpenedEvent ev) {
+                    deltaAmount = ev.getInitialBalance() != null ? ev.getInitialBalance() : java.math.BigDecimal.ZERO;
+                    runningBalance = runningBalance.add(deltaAmount);
+                } else if (event instanceof com.bank.ledger.events.FundsDepositedEvent ev) {
+                    deltaAmount = ev.getAmount() != null ? ev.getAmount() : java.math.BigDecimal.ZERO;
+                    runningBalance = runningBalance.add(deltaAmount);
+                } else if (event instanceof com.bank.ledger.events.FundsWithdrawnEvent ev) {
+                    deltaAmount = ev.getAmount() != null ? ev.getAmount() : java.math.BigDecimal.ZERO;
+                    runningBalance = runningBalance.subtract(deltaAmount);
+                } else if (event instanceof com.bank.ledger.events.TransferInitiatedEvent ev) {
+                    deltaAmount = ev.getAmount() != null ? ev.getAmount() : java.math.BigDecimal.ZERO;
+                }
+            } catch (Exception ex) {
+                log.error("Failed to parse event payload for running balance calculation: {}", ex.getMessage());
+            }
+
+            responseList.add(new DTOs.EventLogResponse(
+                    e.getId() != null ? e.getId().toString() : null,
+                    e.getAggregateId(),
+                    e.getEventType(),
+                    e.getPayload(),
+                    e.getVersion(),
+                    e.getCreatedAt(),
+                    deltaAmount,
+                    runningBalance
+            ));
+        }
 
         return ResponseEntity.ok(responseList);
     }

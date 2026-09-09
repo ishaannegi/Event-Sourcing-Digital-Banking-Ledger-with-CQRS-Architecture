@@ -1348,6 +1348,12 @@ export default function AccountsPage() {
                           }}>
                             v{evt.version}
                           </span>
+
+                          {evt.runningBalance !== undefined && evt.runningBalance !== null && (
+                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#0f172a', backgroundColor: '#f1f5f9', border: '1px solid #e2e8f0', padding: '0.15rem 0.5rem', borderRadius: '6px', fontFamily: 'monospace' }}>
+                              Running: ${Number(evt.runningBalance).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                          )}
                         </div>
 
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
