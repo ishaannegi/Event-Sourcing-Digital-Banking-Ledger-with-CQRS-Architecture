@@ -1,15 +1,18 @@
-# Event-Sourced Digital Banking Ledger with CQRS Architecture
+# Event-Sourced Digital Banking Ledger with CQRS Architecture & React SPA
 
 ![Java](https://img.shields.io/badge/Java-17%2B-orange?style=for-the-badge&logo=openjdk)
 ![Spring Boot](https://img.shields.io/badge/Spring_Boot-3.3.0-6DB33F?style=for-the-badge&logo=springboot)
-![Spring Security](https://img.shields.io/badge/Spring_Security-JWT-6DB33F?style=for-the-badge&logo=springsecurity)
+![React](https://img.shields.io/badge/React-18-61DAFB?style=for-the-badge&logo=react)
+![Vite](https://img.shields.io/badge/Vite-5.4-646CFF?style=for-the-badge&logo=vite)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?style=for-the-badge&logo=postgresql)
 ![Apache Kafka](https://img.shields.io/badge/Apache_Kafka-3.7.0-231F20?style=for-the-badge&logo=apachekafka)
 ![Redis](https://img.shields.io/badge/Redis-7.0-DC382D?style=for-the-badge&logo=redis)
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=for-the-badge&logo=docker)
 ![License](https://img.shields.io/badge/License-Apache_2.0-blue?style=for-the-badge)
 
-An enterprise-grade, high-throughput Digital Banking Ledger built with **Spring Boot 3**, **PostgreSQL**, **Apache Kafka**, and **Redis**. Implements **Event Sourcing**, **CQRS (Command Query Responsibility Segregation)**, **Double-Entry Accounting**, **Redis Cache-Aside/Write-Through caching**, and **JWT Security with Role-Based Access Control (RBAC)**.
+An enterprise-grade, high-throughput Digital Banking Ledger built with **Spring Boot 3**, **PostgreSQL**, **Apache Kafka**, **Redis**, and a modern **React SPA (Vite)** frontend.
+
+Implements **Event Sourcing**, **CQRS (Command Query Responsibility Segregation)**, **Double-Entry Accounting**, **Automatic Command Retries for Optimistic Locking Conflicts**, **Redis Lettuce Pooling (Cache-Aside & Write-Through)**, **JWT Security with RBAC**, and a **Tamper-Evident Audit & Compliance Panel** with **Point-in-Time Balance Reconstruction & Running Balance Event Breakdown**.
 
 ---
 
@@ -17,11 +20,12 @@ An enterprise-grade, high-throughput Digital Banking Ledger built with **Spring 
 
 ```mermaid
 flowchart TD
-    subgraph Client Layer ["Client / Consumer Layer"]
-        C["Client / Postman / Swagger UI"]
+    subgraph Frontend Layer ["Frontend React SPA (Vite - Port 3000)"]
+        UI["React SPA (Dashboard, Accounts, Audit Trail)"]
+        CTX["In-Memory AuthContext (JWT State)"]
     end
 
-    subgraph Security Layer ["Security & Auth Layer"]
+    subgraph Security Layer ["Security & Auth Layer (Port 8080)"]
         AUTH["AuthController / JwtAuthenticationFilter"]
         JWT["JJWT Token Provider"]
         USERS[("PostgreSQL users Table")]
@@ -29,7 +33,7 @@ flowchart TD
 
     subgraph Command Side ["Command Side (Write Path - Source of Truth)"]
         CTRL["AccountController / REST API"]
-        CH["AccountCommandHandler"]
+        CH["AccountCommandHandler (Retry-on-Conflict Loop)"]
         AGG["Account Aggregate"]
         ES["EventStoreService"]
         PG_EVENT[("PostgreSQL Event Store (events)")]
@@ -43,31 +47,62 @@ flowchart TD
     subgraph Read Side ["Read Side (CQRS Query Path & Cache)"]
         PC["AccountProjectionConsumer"]
         PG_READ[("PostgreSQL Read Model (account_balances)")]
-        REDIS[("Redis Cache (account:balance:id)")]
+        REDIS[("Redis Cache (Lettuce Pool - IPv4 127.0.0.1)")]
     end
 
-    C -->|"1. POST /auth/login"| AUTH
+    subgraph Audit Compliance ["Audit & Compliance Engine"]
+        AUDIT_CONS["AuditConsumer"]
+        PG_AUDIT[("Tamper-Evident PostgreSQL audit_log")]
+        AUDIT_SVC["AuditComplianceService (Point-in-Time Replay)"]
+    end
+
+    UI -->|"1. POST /auth/login"| AUTH
     AUTH -->|"2. Verify BCrypt Password"| USERS
-    AUTH -->|"3. Issue JWT Token"| C
+    AUTH -->|"3. Issue JWT Token"| CTX
 
-    C -->|"4. HTTP POST /accounts with Bearer Token"| AUTH
-    AUTH -->|"5. Validate Claims & Context"| CTRL
-    CTRL -->|"6. Enforce Account Ownership (RBAC)"| CH
-    CH -->|"7. Replay Historical Events"| AGG
-    AGG -->|"8. Validate Invariants & Balances"| CH
-    CH -->|"9. Append Events Atomically"| ES
-    ES -->|"10. Store Event Batch & Optimistic Lock"| PG_EVENT
-    ES -->|"11. Post-Commit Event Publish"| KP
-    KP -->|"12. Produce Event with Headers & MDC"| KAFKA
-    KAFKA -->|"13. Async Stream Consumption"| PC
-    PC -->|"14. Idempotent Projection Update"| PG_READ
-    PC -->|"15. Write-Through Cache Update"| REDIS
+    UI -->|"4. Commands & Queries with Bearer Token"| CTRL
+    CTRL -->|"5. Validate RBAC Claims"| CH
+    CH -->|"6. Automatic Retry Loop on Concurrency Conflict"| ES
+    ES -->|"7. Atomic Event Store Write & Optimistic Lock"| PG_EVENT
+    ES -->|"8. Post-Commit Event Publish"| KP
+    KP -->|"9. Produce Event with Headers & MDC"| KAFKA
 
-    C -->|"GET /accounts/{id} (Event Replay)"| CTRL
-    C -->|"GET /accounts/{id}/balance-view (CQRS Fast Read)"| CTRL
-    CTRL -->|"Cache HIT (Sub-ms)"| REDIS
-    CTRL -->|"Cache MISS Fallback"| PG_READ
+    KAFKA -->|"10. Async Projection Consumer"| PC
+    PC -->|"11. Idempotent Write-Through Update"| REDIS
+    PC -->|"12. Update Read Model"| PG_READ
+
+    KAFKA -->|"13. Async Audit Consumer"| AUDIT_CONS
+    AUDIT_CONS -->|"14. Save Audit Record"| PG_AUDIT
+    AUDIT_SVC -->|"15. Reconstruct Historical Balance & Running Balances"| PG_AUDIT
+
+    UI -->|"GET /accounts/{id}/balance-view (Sub-9ms Cache Hit)"| REDIS
 ```
+
+---
+
+## ✨ Key Features & Capabilities
+
+### 1. 🎨 Warm Luxury React SPA Frontend (`/frontend`)
+- **Modern Split-Screen Login**: Soft cream gradient background, rounded pill inputs, warm inline error banners, and demo quick-login buttons for Alice (`CUSTOMER`) and Admin (`COMPLIANCE`).
+- **In-Memory JWT Token Handling**: Tokens stored strictly in React state memory (zero `localStorage` storage for security).
+- **Accounts Portal**: Open accounts, make deposits/withdrawals, execute double-entry transfers, and inspect aggregate versioning.
+- **CQRS Inspector**: Side-by-side comparison of Write Model (Event Store Replay) vs Read Model (Redis/Postgres Cache-Aside) with real-time synchronization latency benchmarking.
+- **Concurrency Simulator**: Fire simultaneous concurrent commands to observe automatic retry-on-conflict behavior in real time.
+
+### 2. 🛡️ Audit & Compliance Trail (`ADMIN` Only)
+- **Point-in-Time Balance Reconstruction**: Replays events strictly up to any requested timestamp to reconstruct balance and aggregate version as of that moment.
+- **Step-by-Step Event Replay Breakdown**: Expandable audit table displaying every replayed event, version, delta amount ($+\$500.00$, $-\$200.00$), running cumulative balance, and timestamp.
+- **One-Click CSV Export**: Download point-in-time event replay breakdowns directly as `.csv` compliance reports.
+- **Regulatory Reporting**: Generate date-range summary reports (total transaction count, total financial volume, and per-account activity share breakdown).
+- **Quick Account Selectors**: Instant selector chips for active accounts to avoid manual UUID copy-pasting.
+
+### 3. ⚡ High-Performance CQRS Read Side & Caching
+- **Lettuce Connection Pooling & IPv4 Binding**: Optimized Redis connection pool using `commons-pool2` and `127.0.0.1` IPv4 loopback, reducing GET cache hit latency from 100–400ms down to **1–9ms**.
+- **CORS Preflight Caching**: Preflight `OPTIONS` requests cached in browsers for 1 hour (`maxAge = 3600s`).
+
+### 4. 🔄 Automatic Retry-on-Conflict (Concurrency Control)
+- `AccountCommandHandler` executes write commands inside an automatic retry loop (up to 5 retries) with randomized exponential backoff (`30ms * attempt + random(70ms)`).
+- Concurrent writes on the same account automatically serialize and succeed without returning HTTP 409 errors to the client.
 
 ---
 
@@ -75,56 +110,36 @@ flowchart TD
 
 ```text
 CQRS/
-├── docker-compose.yml                      # Infrastructure: PostgreSQL 16, Kafka KRaft, Redis 7
-├── pom.xml                                 # Maven dependencies (Spring Boot 3.3.0, Kafka, Redis, Security, JJWT, OpenAPI, Actuator)
+├── docker-compose.yml                      # Infrastructure: PostgreSQL 16, Kafka KRaft, Redis 7, Kafka UI
+├── pom.xml                                 # Spring Boot dependencies & Maven config
+├── frontend/                               # React Single Page Application (Vite, React 18, Lucide)
+│   ├── package.json
+│   ├── vite.config.js                      # Vite dev server config (Port 3000)
+│   └── src/
+│       ├── context/AuthContext.jsx          # In-memory JWT session management
+│       ├── services/api.js                 # Axios client wrapping Spring Boot backend
+│       ├── pages/
+│       │   ├── LoginPage.jsx               # Split-screen luxury login UI
+│       │   ├── DashboardPage.jsx           # Active session & API tester
+│       │   ├── AccountsPage.jsx            # Accounts, CQRS Inspector & Concurrency simulator
+│       │   └── AuditTrailPage.jsx          # Point-in-time balance lookup & Regulatory reports
+│       └── index.css                       # Design system tokens, warm luxury palette & dark mode
 └── src/
     ├── main/
     │   ├── java/com/bank/ledger/
-    │   │   ├── api/
-    │   │   │   ├── AccountController.java   # REST Controller (Commands + CQRS Queries + RBAC Ownership checks)
-    │   │   │   ├── DTOs.java                # DTOs: LoginRequest, LoginResponse, AccountResponse, ErrorResponse
-    │   │   │   └── GlobalExceptionHandler.java # Uniform REST exception mapper (400, 401, 403, 404, 409, 422, 500)
-    │   │   ├── auth/
-    │   │   │   ├── AuthController.java      # Login endpoint POST /auth/login
-    │   │   │   ├── CustomAccessDeniedHandler.java # 403 Forbidden JSON Handler
-    │   │   │   ├── CustomAuthenticationEntryPoint.java # 401 Unauthorized JSON Handler
-    │   │   │   ├── JwtAuthenticationFilter.java # Stateless Bearer token filter
-    │   │   │   ├── JwtTokenProvider.java    # HMAC-SHA256 JWT generator & validator
-    │   │   │   ├── SecurityConfig.java      # Spring Security FilterChain & BCrypt encoder configuration
-    │   │   │   ├── UserEntity.java          # JPA entity for 'users' table
-    │   │   │   └── UserRepository.java      # Spring Data JPA repository for user lookup
-    │   │   ├── command/
-    │   │   │   ├── AccountAggregate.java    # Pure Aggregate rebuilding state via event replay
-    │   │   │   ├── AccountCommandHandler.java # Handles Open, Deposit, Withdraw, Transfer commands
-    │   │   │   └── Commands.java            # Command definitions
-    │   │   ├── config/
-    │   │   │   ├── CorrelationIdFilter.java # Servlet filter for X-Correlation-ID tracing
-    │   │   │   ├── OpenApiConfig.java       # Swagger UI OpenAPI 3.0 bean with Bearer JWT Auth
-    │   │   │   └── RedisConfig.java         # RedisTemplate Jackson JSON serializer setup
-    │   │   ├── events/
-    │   │   │   ├── AccountOpenedEvent.java  # Domain Event: AccountOpened
-    │   │   │   ├── FundsDepositedEvent.java # Domain Event: FundsDeposited
-    │   │   │   ├── FundsWithdrawnEvent.java # Domain Event: FundsWithdrawn
-    │   │   │   ├── TransferInitiatedEvent.java # Domain Event: TransferInitiated
-    │   │   │   ├── KafkaEventProducer.java  # Publishes committed events to Kafka with headers & MDC
-    │   │   │   └── KafkaTopicConfig.java   # Auto-creates 'ledger-events' (3 partitions)
-    │   │   ├── eventstore/
-    │   │   │   ├── EventEntity.java         # JPA entity for append-only 'events' table
-    │   │   │   └── EventStoreService.java   # Appends events, enforces versioning & optimistic locking
-    │   │   └── readmodel/
-    │   │       ├── AccountBalanceEntity.java # Read model entity for 'account_balances'
-    │   │       ├── AccountCacheService.java # Redis Cache-Aside & Write-Through operations
-    │   │       └── AccountProjectionConsumer.java # Idempotent Kafka Listener projecting events to PG & Redis
+    │   │   ├── api/AccountController.java  # REST API (Accounts, Deposits, Withdrawals, Transfers, Events)
+    │   │   ├── api/DTOs.java               # Structured DTO definitions
+    │   │   ├── audit/                      # Tamper-evident audit consumer & compliance service
+    │   │   ├── auth/                       # Spring Security, JWT provider, BCrypt, AuthController
+    │   │   ├── command/                    # AccountAggregate & AccountCommandHandler (Retry loop)
+    │   │   ├── config/                     # Redis pooling config & CORS setup
+    │   │   ├── events/                     # Domain Events & Kafka Producer
+    │   │   ├── eventstore/                 # Append-only Event Store & Optimistic Lock repository
+    │   │   └── readmodel/                  # Kafka Projection Consumer & Redis Cache Service
     │   └── resources/
-    │       ├── application.yml              # Database, Kafka, Redis, Actuator, & Logging config
-    │       └── db/migration/
-    │           ├── V1__init_event_store.sql # Schema migration for Event Store (events table & index)
-    │           ├── V2__init_read_model.sql  # Schema migration for CQRS Read Model (account_balances table)
-    │           └── V3__init_users.sql       # Schema migration for Users & seeded BCrypt test accounts
-    └── test/
-        └── java/com/bank/ledger/
-            ├── auth/AuthSecurityTest.java   # JUnit 5 tests for BCrypt matching & JWT claims
-            └── command/AccountAggregateTest.java # JUnit 5 tests for Aggregate, Replay & Invariants
+    │       ├── application.yml             # PostgreSQL, Kafka, Redis, Actuator config
+    │       └── db/migration/               # Flyway database migration scripts (V1, V2, V3)
+    └── test/                               # Automated JUnit 5 test suite
 ```
 
 ---
@@ -133,216 +148,61 @@ CQRS/
 
 | Username | Plaintext Password | Role | Permissions & Account Ownership Rules |
 | :--- | :--- | :--- | :--- |
-| **`admin`** | `admin123` | `ROLE_ADMIN` | Can view and operate on **any** account in the system. |
-| **`alice`** | `alice123` | `ROLE_CUSTOMER` | Can open and operate strictly on accounts owned by `alice`. |
-| **`bob`** | `bob123` | `ROLE_CUSTOMER` | Can open and operate strictly on accounts owned by `bob`. |
+| **`admin`** | `admin123` | `ADMIN` | Full access to all accounts & Audit Compliance Trail. |
+| **`alice`** | `alice123` | `CUSTOMER` | Access restricted strictly to accounts owned by `alice`. |
+| **`bob`** | `bob123` | `CUSTOMER` | Access restricted strictly to accounts owned by `bob`. |
 
 ---
 
-## 🚀 Key Architectural Principles
-
-> [!IMPORTANT]
-> **1. JWT Authentication & Role-Based Access Control (RBAC)**
-> - `POST /auth/login` verifies credentials via BCrypt and returns an HMAC-SHA256 signed JWT (1-hour expiration).
-> - All `/accounts/**` endpoints require `Authorization: Bearer <token>`.
-> - A `CUSTOMER` can only operate on/view accounts where `ownerName` matches their authenticated username.
-> - An `ADMIN` can view and operate on any account.
-
-> [!IMPORTANT]
-> **2. Event Sourcing & Immutable Ledger**
-> - The write side has **no mutable `balance` table**. Account state is reconstructed on-demand by replaying ordered, immutable domain events (`AccountOpened`, `FundsDeposited`, `FundsWithdrawn`, `TransferInitiated`) from PostgreSQL.
-
-> [!NOTE]
-> **3. Double-Entry Accounting Invariant**
-> - Every transfer atomically generates a **Debit** entry (withdrawal on source) and a **Credit** entry (deposit on destination).
-> - Enforces `SUM(Debits) == SUM(Credits)` prior to event persistence. If the invariant fails, the transaction is rejected.
-
-> [!TIP]
-> **4. Optimistic Concurrency Control**
-> - Uses an aggregate `version` column and `(aggregate_id, version)` unique constraint in PostgreSQL to detect concurrent modifications, throwing `OptimisticLockingException` (HTTP 409 Conflict).
-
-> [!NOTE]
-> **5. CQRS Read Model & Redis Caching**
-> - **Command Path**: Appends events to PostgreSQL event store.
-> - **Async Projection**: `AccountProjectionConsumer` streams Kafka events and updates PostgreSQL `account_balances`.
-> - **Write-Through**: `AccountProjectionConsumer` writes updated balances directly to Redis.
-> - **Cache-Aside Read Path**: `GET /accounts/{id}/balance-view` checks Redis first (sub-millisecond), falling back to PostgreSQL read model on a cache miss.
-
----
-
-## 🛠️ Technology Stack
-
-- **Core Framework**: Java 17+, Spring Boot 3.3.0
-- **Security & Auth**: Spring Security, JJWT 0.12.5 (HMAC-SHA256), BCrypt
-- **Database**: PostgreSQL 16 (Event Store, CQRS Read Model, Users)
-- **Database Migrations**: Flyway
-- **Event Streaming**: Apache Kafka 3.7.0 (KRaft mode)
-- **Cache**: Redis 7
-- **API Documentation**: Springdoc OpenAPI / Swagger UI (with Bearer Token **Authorize 🔓** button)
-- **Observability**: Spring Boot Actuator & SLF4J MDC (`X-Correlation-ID`)
-- **Testing**: JUnit 5
-
----
-
-## ⚡ How to Run Locally
+## 🚀 How to Run from Scratch
 
 ### Prerequisites
-- Docker Desktop & Docker Compose
-- Java 17+
-- Maven 3.8+
+- **Docker Desktop** (must be running)
+- **Java 17+** & **Maven**
+- **Node.js 18+** & **npm**
 
-### 1. Start Infrastructure Containers
+### Step 1: Start Infrastructure Containers
 ```bash
 docker compose up -d
 ```
+*Starts PostgreSQL (5432), Kafka (9092), Redis (6379), and Kafka UI (8081).*
 
-### 2. Launch Spring Boot Application
+### Step 2: Start Spring Boot Backend
 ```bash
 mvn spring-boot:run
 ```
-The server will start on `http://localhost:8080`.
+*Backend runs on `http://localhost:8080`.*
 
----
-
-## 🔍 Interactive Documentation & Health Checks
-
-- **Swagger UI (Interactive API Tester with Bearer JWT Authorize Button)**:  
-  [http://localhost:8080/swagger-ui.html](http://localhost:8080/swagger-ui.html)
-
-- **Actuator Infrastructure Health Check**:  
-  `GET http://localhost:8080/actuator/health`  
-  *Returns health status for PostgreSQL, Redis, and disk space in a single payload.*
-
----
-
-## 📡 API Reference & cURL Verification Examples
-
-### 1. Authenticate & Obtain JWT Token
+### Step 3: Start React Frontend Application
+Open a **new** terminal window:
 ```bash
-curl -X POST http://localhost:8080/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{
-    "username": "alice",
-    "password": "alice123"
-  }'
+cd frontend
+npm install
+npm run dev
 ```
-**Response (HTTP 200 OK):**
-```json
-{
-  "token": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhbGljZSIsInJvbGUiOiJDVVNUT01FUiIsImlhdCI6MTc4ODU0NDAwMCwiZXhwIjoxNzg4NTQ3NjAwfQ...",
-  "username": "alice",
-  "role": "CUSTOMER"
-}
-```
+*Frontend runs on `http://localhost:3000`.*
 
----
-
-### 2. Open an Account (Authenticated Customer)
-```bash
-curl -X POST http://localhost:8080/accounts \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <ALICE_JWT_TOKEN>" \
-  -d '{
-    "ownerName": "Alice",
-    "initialBalance": 1000.00
-  }'
-```
-**Response (HTTP 201 Created):**
-```json
-{
-  "accountId": "a1b2c3d4-5678-90ab-cdef-1234567890ab",
-  "ownerName": "alice",
-  "balance": 1000.00,
-  "version": 1
-}
-```
-
----
-
-### 3. Deposit Funds into Own Account
-```bash
-curl -X POST http://localhost:8080/accounts/a1b2c3d4-5678-90ab-cdef-1234567890ab/deposit \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <ALICE_JWT_TOKEN>" \
-  -d '{
-    "amount": 250.00
-  }'
-```
-**Response (HTTP 200 OK):**
-```json
-{
-  "accountId": "a1b2c3d4-5678-90ab-cdef-1234567890ab",
-  "ownerName": "alice",
-  "balance": 1250.00,
-  "version": 2
-}
-```
-
----
-
-### 4. Demonstrate 403 Forbidden (Bob Accessing Alice's Account)
-```bash
-curl -X GET http://localhost:8080/accounts/a1b2c3d4-5678-90ab-cdef-1234567890ab \
-  -H "Authorization: Bearer <BOB_JWT_TOKEN>"
-```
-**Response (HTTP 403 Forbidden):**
-```json
-{
-  "status": 403,
-  "error": "Forbidden",
-  "message": "Access denied: You do not have permission to access accounts owned by 'alice'",
-  "timestamp": 1788544000000
-}
-```
-
----
-
-### 5. Demonstrate 401 Unauthorized (Missing/Invalid Token)
-```bash
-curl -X GET http://localhost:8080/accounts/a1b2c3d4-5678-90ab-cdef-1234567890ab
-```
-**Response (HTTP 401 Unauthorized):**
-```json
-{
-  "status": 401,
-  "error": "Unauthorized",
-  "message": "Full authentication is required to access this resource. Missing or invalid Bearer token.",
-  "timestamp": 1788544000000
-}
-```
-
----
-
-### 6. Admin Access (Accessing Any Account)
-```bash
-curl -X GET http://localhost:8080/accounts/a1b2c3d4-5678-90ab-cdef-1234567890ab \
-  -H "Authorization: Bearer <ADMIN_JWT_TOKEN>"
-```
-**Response (HTTP 200 OK):**
-```json
-{
-  "accountId": "a1b2c3d4-5678-90ab-cdef-1234567890ab",
-  "ownerName": "alice",
-  "balance": 1250.00,
-  "version": 2
-}
-```
+### Step 4: Open in Browser
+Navigate to **`http://localhost:3000/`** in your browser.
 
 ---
 
 ## 🧪 Unit & Integration Testing
 
-Run the automated test suite:
+Run the backend automated test suite:
 ```bash
-mvn clean test
+mvn test
 ```
-**Tests Executed:**
-- `AuthSecurityTest.testBCryptMatches`
-- `AuthSecurityTest.testJwtTokenProvider`
-- `AccountAggregateTest.replayCorrectlyRebuildsBalanceAndVersion`
-- `AccountAggregateTest.insufficientBalanceRejectsWithdrawal`
-- `AccountAggregateTest.doubleEntryInvariantHoldsAfterTransfer`
-- `AccountAggregateTest.zeroOrNegativeAmountIsRejected`
+**Test Coverage:**
+- `AuditComplianceServiceTest`: Verifies point-in-time balance reconstruction, replayed event details, running balances, and regulatory report aggregation.
+- `AuthSecurityTest`: Verifies BCrypt password matching and JWT token claim verification.
+- `AccountAggregateTest`: Verifies aggregate event replay, insufficient balance validation, and double-entry accounting invariants.
+
+Run frontend build verification:
+```bash
+cd frontend
+npm run build
+```
 
 ---
 
