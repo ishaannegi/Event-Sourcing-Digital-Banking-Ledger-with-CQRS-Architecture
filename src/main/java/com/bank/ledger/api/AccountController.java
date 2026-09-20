@@ -304,8 +304,14 @@ public class AccountController {
                     e.getVersion(),
                     e.getCreatedAt(),
                     deltaAmount,
-                    runningBalance
+                    runningBalance,
+                    e.getPreviousHash(),
+                    e.getHash(),
+                    e.getPqcSignature(),
+                    e.getPqcPublicKey(),
+                    e.getSignatureAlgorithm()
             ));
+
         }
 
         return ResponseEntity.ok(responseList);

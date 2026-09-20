@@ -35,6 +35,21 @@ public class EventEntity {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
+    @Column(name = "previous_hash", length = 128)
+    private String previousHash;
+
+    @Column(name = "hash", length = 128)
+    private String hash;
+
+    @Column(name = "pqc_signature", columnDefinition = "TEXT")
+    private String pqcSignature;
+
+    @Column(name = "pqc_public_key", columnDefinition = "TEXT")
+    private String pqcPublicKey;
+
+    @Column(name = "signature_algorithm", length = 50)
+    private String signatureAlgorithm;
+
     public EventEntity() {
     }
 
@@ -89,4 +104,45 @@ public class EventEntity {
     public void setCreatedAt(Instant createdAt) {
         this.createdAt = createdAt;
     }
+
+    public String getPreviousHash() {
+        return previousHash;
+    }
+
+    public void setPreviousHash(String previousHash) {
+        this.previousHash = previousHash;
+    }
+
+    public String getHash() {
+        return hash;
+    }
+
+    public void setHash(String hash) {
+        this.hash = hash;
+    }
+
+    public String getPqcSignature() {
+        return pqcSignature;
+    }
+
+    public void setPqcSignature(String pqcSignature) {
+        this.pqcSignature = pqcSignature;
+    }
+
+    public String getPqcPublicKey() {
+        return pqcPublicKey;
+    }
+
+    public void setPqcPublicKey(String pqcPublicKey) {
+        this.pqcPublicKey = pqcPublicKey;
+    }
+
+    public String getSignatureAlgorithm() {
+        return signatureAlgorithm;
+    }
+
+    public void setSignatureAlgorithm(String signatureAlgorithm) {
+        this.signatureAlgorithm = signatureAlgorithm;
+    }
 }
+

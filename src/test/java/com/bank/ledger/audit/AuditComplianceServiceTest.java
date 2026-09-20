@@ -19,17 +19,24 @@ import static org.mockito.Mockito.*;
 class AuditComplianceServiceTest {
 
     private AuditLogRepository repository;
+    private com.bank.ledger.eventstore.EventStoreRepository eventStoreRepository;
+    private TamperDemoBackupRepository tamperDemoBackupRepository;
     private ObjectMapper objectMapper;
+    private com.bank.ledger.security.PqcKeyManagementService pqcKeyManagementService;
     private AuditComplianceService service;
 
     @BeforeEach
     void setUp() {
         repository = mock(AuditLogRepository.class);
+        eventStoreRepository = mock(com.bank.ledger.eventstore.EventStoreRepository.class);
+        tamperDemoBackupRepository = mock(TamperDemoBackupRepository.class);
         objectMapper = new ObjectMapper()
                 .findAndRegisterModules()
                 .configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-        service = new AuditComplianceService(repository, objectMapper);
+        pqcKeyManagementService = new com.bank.ledger.security.PqcKeyManagementService();
+        service = new AuditComplianceService(repository, eventStoreRepository, tamperDemoBackupRepository, objectMapper, pqcKeyManagementService);
     }
+
 
     @Test
     @DisplayName("Point-in-time reconstruction replays events strictly up to target timestamp")
@@ -89,4 +96,92 @@ class AuditComplianceServiceTest {
         assertEquals(2L, report.accountTransactionCounts().get("acc-1"));
         assertEquals(1L, report.accountTransactionCounts().get("acc-2"));
     }
+
+    @Test
+    @DisplayName("verifyEventChain confirms valid SHA3-512 chain and detects payload tampering")
+    void testVerifyEventChain() throws Exception {
+        String accountId = "acc-chain-1";
+        String p1 = service.canonicalizeJson("{\"accountId\":\"acc-chain-1\",\"ownerName\":\"Alice\",\"initialBalance\":1000.00}");
+        String p2 = service.canonicalizeJson("{\"accountId\":\"acc-chain-1\",\"amount\":500.00}");
+
+        String h0 = com.bank.ledger.eventstore.EventStoreService.GENESIS_HASH;
+        String h1 = com.bank.ledger.eventstore.EventStoreService.computeSha3_512(h0 + ":" + accountId + ":AccountOpenedEvent:1:" + p1);
+        String h2 = com.bank.ledger.eventstore.EventStoreService.computeSha3_512(h1 + ":" + accountId + ":FundsDepositedEvent:2:" + p2);
+
+        com.bank.ledger.eventstore.EventEntity ev1 = new com.bank.ledger.eventstore.EventEntity(
+                accountId, "AccountOpenedEvent", p1, 1L, Instant.now());
+        ev1.setPreviousHash(h0);
+        ev1.setHash(h1);
+
+        com.bank.ledger.eventstore.EventEntity ev2 = new com.bank.ledger.eventstore.EventEntity(
+                accountId, "FundsDepositedEvent", p2, 2L, Instant.now());
+        ev2.setPreviousHash(h1);
+        ev2.setHash(h2);
+
+        when(eventStoreRepository.findByAggregateIdOrderByVersionAsc(accountId)).thenReturn(List.of(ev1, ev2));
+
+        // 1. Valid chain test
+        DTOs.EventChainVerificationResponse resValid = service.verifyEventChain(accountId);
+        assertEquals("VALID", resValid.status());
+        assertTrue(resValid.chainIntact());
+        assertEquals(2, resValid.eventsVerified());
+        assertNull(resValid.brokenAtVersion());
+
+        // 2. Tampered payload test
+        com.bank.ledger.eventstore.EventEntity ev2Tampered = new com.bank.ledger.eventstore.EventEntity(
+                accountId, "FundsDepositedEvent", "{\"accountId\":\"acc-chain-1\",\"amount\":5000.00}", 2L, Instant.now());
+        ev2Tampered.setPreviousHash(h1);
+        ev2Tampered.setHash(h2); // Stale hash vs altered payload
+
+        when(eventStoreRepository.findByAggregateIdOrderByVersionAsc(accountId)).thenReturn(List.of(ev1, ev2Tampered));
+
+        DTOs.EventChainVerificationResponse resTampered = service.verifyEventChain(accountId);
+        assertEquals("TAMPERED", resTampered.status());
+        assertFalse(resTampered.chainIntact());
+        assertEquals(2L, resTampered.brokenAtVersion());
+    }
+
+    @Test
+    @DisplayName("tamperEventPayload modifies payload and creates persistent DB backup")
+    void testTamperEventPayload() {
+        java.util.UUID eventId = java.util.UUID.randomUUID();
+        String originalPayload = "{\"accountId\":\"acc-1\",\"amount\":100.00}";
+        com.bank.ledger.eventstore.EventEntity event = new com.bank.ledger.eventstore.EventEntity(
+                "acc-1", "FundsDepositedEvent", originalPayload, 1L, Instant.now());
+
+        when(eventStoreRepository.findById(eventId)).thenReturn(java.util.Optional.of(event));
+        when(tamperDemoBackupRepository.findById(eventId)).thenReturn(java.util.Optional.empty());
+
+        DTOs.TamperDemoResponse response = service.tamperEventPayload(eventId);
+
+        assertTrue(response.isTampered());
+        assertEquals(eventId.toString(), response.eventId());
+        assertTrue(event.getPayload().contains("999999.00"));
+        verify(tamperDemoBackupRepository, times(1)).save(any(TamperDemoBackupEntity.class));
+        verify(eventStoreRepository, times(1)).save(event);
+    }
+
+    @Test
+    @DisplayName("restoreEventPayload restores payload from persistent DB backup")
+    void testRestoreEventPayload() {
+        java.util.UUID eventId = java.util.UUID.randomUUID();
+        String originalPayload = "{\"accountId\":\"acc-1\",\"amount\":100.00}";
+        String tamperedPayload = "{\"accountId\":\"acc-1\",\"amount\":999999.99}";
+        
+        com.bank.ledger.eventstore.EventEntity event = new com.bank.ledger.eventstore.EventEntity(
+                "acc-1", "FundsDepositedEvent", tamperedPayload, 1L, Instant.now());
+        TamperDemoBackupEntity backup = new TamperDemoBackupEntity(eventId, originalPayload, Instant.now());
+
+        when(eventStoreRepository.findById(eventId)).thenReturn(java.util.Optional.of(event));
+        when(tamperDemoBackupRepository.findById(eventId)).thenReturn(java.util.Optional.of(backup));
+
+        DTOs.TamperDemoResponse response = service.restoreEventPayload(eventId);
+
+        assertFalse(response.isTampered());
+        assertEquals(eventId.toString(), response.eventId());
+        assertEquals(originalPayload, event.getPayload());
+        verify(eventStoreRepository, times(1)).save(event);
+        verify(tamperDemoBackupRepository, times(1)).delete(backup);
+    }
 }
+

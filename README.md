@@ -8,11 +8,13 @@
 ![Apache Kafka](https://img.shields.io/badge/Apache_Kafka-3.7.0-231F20?style=for-the-badge&logo=apachekafka)
 ![Redis](https://img.shields.io/badge/Redis-7.0-DC382D?style=for-the-badge&logo=redis)
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=for-the-badge&logo=docker)
+![Post-Quantum Security](https://img.shields.io/badge/Post--Quantum-ML--DSA--65%20Dilithium3-7c3aed?style=for-the-badge&logo=shield)
 ![License](https://img.shields.io/badge/License-Apache_2.0-blue?style=for-the-badge)
 
 An enterprise-grade, high-throughput Digital Banking Ledger built with **Spring Boot 3**, **PostgreSQL**, **Apache Kafka**, **Redis**, and a modern **React SPA (Vite)** frontend.
 
-Implements **Event Sourcing**, **CQRS (Command Query Responsibility Segregation)**, **Double-Entry Accounting**, **Automatic Command Retries for Optimistic Locking Conflicts**, **Redis Lettuce Pooling (Cache-Aside & Write-Through)**, **JWT Security with RBAC**, and a **Tamper-Evident Audit & Compliance Panel** with **Point-in-Time Balance Reconstruction & Running Balance Event Breakdown**.
+Implements **Event Sourcing**, **CQRS (Command Query Responsibility Segregation)**, **Double-Entry Accounting**, **Post-Quantum Cryptography (NIST ML-DSA-65 / Dilithium3 Digital Signatures)**, **SHA3-512 Cryptographic Event Hash-Chaining**, **Aggregate Snapshotting Engine ($O(1)$ Replay Acceleration)**, **Automatic Command Retries for Optimistic Locking Conflicts**, **Redis Lettuce Pooling (Cache-Aside & Write-Through)**, **JWT Security with RBAC**, and a **Tamper-Evident Audit & Compliance Panel** with **Point-in-Time Balance Reconstruction & Running Balance Event Breakdown**.
+
 
 ---
 

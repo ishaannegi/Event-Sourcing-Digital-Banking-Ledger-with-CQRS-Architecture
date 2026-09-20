@@ -29,6 +29,22 @@ public class AccountAggregate {
         return aggregate;
     }
 
+    public static AccountAggregate replayFromSnapshot(AccountAggregate snapshotState, List<DomainEvent> remainingEvents) {
+        AccountAggregate aggregate = new AccountAggregate();
+        if (snapshotState != null) {
+            aggregate.accountId = snapshotState.accountId;
+            aggregate.ownerName = snapshotState.ownerName;
+            aggregate.balance = snapshotState.balance != null ? snapshotState.balance : BigDecimal.ZERO;
+            aggregate.version = snapshotState.version;
+            aggregate.active = snapshotState.active;
+        }
+        for (DomainEvent event : remainingEvents) {
+            aggregate.apply(event);
+        }
+        return aggregate;
+    }
+
+
     public void apply(DomainEvent event) {
         this.version++;
         if (event instanceof AccountOpenedEvent e) {

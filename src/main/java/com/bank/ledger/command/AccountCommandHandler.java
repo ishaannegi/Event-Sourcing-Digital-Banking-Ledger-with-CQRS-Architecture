@@ -28,12 +28,17 @@ public class AccountCommandHandler {
     public static final long BASE_BACKOFF_MS = 30;
 
     private final EventStoreService eventStoreService;
+    private final com.bank.ledger.snapshot.AccountSnapshotService accountSnapshotService;
     private final TransactionTemplate transactionTemplate;
 
-    public AccountCommandHandler(EventStoreService eventStoreService, PlatformTransactionManager transactionManager) {
+    public AccountCommandHandler(EventStoreService eventStoreService,
+                                 com.bank.ledger.snapshot.AccountSnapshotService accountSnapshotService,
+                                 PlatformTransactionManager transactionManager) {
         this.eventStoreService = eventStoreService;
+        this.accountSnapshotService = accountSnapshotService;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
+
 
     public String handle(Commands.OpenAccountCommand cmd) {
         return executeWithRetry("NEW_ACCOUNT", () -> {
@@ -144,7 +149,17 @@ public class AccountCommandHandler {
     }
 
     public AccountAggregate loadAggregate(String accountId) {
+        if (accountSnapshotService != null) {
+            var latestOpt = accountSnapshotService.getLatestSnapshot(accountId);
+            if (latestOpt.isPresent()) {
+                var snapEntity = latestOpt.get();
+                AccountAggregate snapAggregate = accountSnapshotService.deserializeSnapshot(snapEntity);
+                List<DomainEvent> remainingEvents = eventStoreService.loadEventStreamAfterVersion(accountId, snapEntity.getVersion());
+                return AccountAggregate.replayFromSnapshot(snapAggregate, remainingEvents);
+            }
+        }
         List<DomainEvent> events = eventStoreService.loadEventStream(accountId);
         return AccountAggregate.replay(events);
     }
 }
+

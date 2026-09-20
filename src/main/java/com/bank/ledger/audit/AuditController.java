@@ -47,6 +47,20 @@ public class AuditController {
     }
 
     @Operation(
+            summary = "Cryptographic Event Hash Chain Verification (ADMIN Only)",
+            description = "Validates the sequential SHA3-512 cryptographic hash chain across all aggregate events for an account to detect any unauthorized database row tampering or payload modification."
+    )
+    @ApiResponse(responseCode = "200", description = "Hash chain verified (status VALID or TAMPERED)")
+    @ApiResponse(responseCode = "401", description = "Missing or invalid Bearer JWT token")
+    @ApiResponse(responseCode = "403", description = "Forbidden - ADMIN role required")
+    @ApiResponse(responseCode = "404", description = "Account not found in event store")
+    @GetMapping("/accounts/{id}/verify-chain")
+    public ResponseEntity<DTOs.EventChainVerificationResponse> verifyChain(@PathVariable("id") String accountId) {
+        DTOs.EventChainVerificationResponse response = auditComplianceService.verifyEventChain(accountId);
+        return ResponseEntity.ok(response);
+    }
+
+    @Operation(
             summary = "Regulatory Compliance Report (ADMIN Only)",
             description = "Computes summary metrics (total transactions, total financial volume, per-account counts) strictly from the tamper-evident audit_log table for the specified date range."
     )
@@ -63,4 +77,39 @@ public class AuditController {
         DTOs.RegulatoryReportResponse response = auditComplianceService.generateRegulatoryReport(from, to);
         return ResponseEntity.ok(response);
     }
+
+    @Operation(
+            summary = "DEMO ONLY - Simulate SQL Payload Tampering (ADMIN Only)",
+            description = "Directly alters an event's JSON payload in the PostgreSQL events table without updating hashes or signatures to simulate SQL tampering outside normal application write path."
+    )
+    @ApiResponse(responseCode = "200", description = "SQL payload tampering simulated successfully")
+    @org.springframework.web.bind.annotation.PostMapping("/demo/tamper/{eventId}")
+    public ResponseEntity<DTOs.TamperDemoResponse> tamperDemoEvent(@PathVariable("eventId") java.util.UUID eventId) {
+        DTOs.TamperDemoResponse response = auditComplianceService.tamperEventPayload(eventId);
+        return ResponseEntity.ok(response);
+    }
+
+    @Operation(
+            summary = "DEMO ONLY - Restore Original Event Payload (ADMIN Only)",
+            description = "Reverts tampered event payload back to original signed JSON payload stored in tamper_demo_backups database table."
+    )
+    @ApiResponse(responseCode = "200", description = "Original event payload restored successfully")
+    @org.springframework.web.bind.annotation.PostMapping("/demo/restore/{eventId}")
+    public ResponseEntity<DTOs.TamperDemoResponse> restoreDemoEvent(@PathVariable("eventId") java.util.UUID eventId) {
+        DTOs.TamperDemoResponse response = auditComplianceService.restoreEventPayload(eventId);
+        return ResponseEntity.ok(response);
+    }
+
+    @Operation(
+            summary = "DEMO ONLY - Restore All Tampered Events for an Account (ADMIN Only)",
+            description = "Reverts all tampered event payloads for an account back to original signed JSON payloads stored in tamper_demo_backups database table."
+    )
+    @ApiResponse(responseCode = "200", description = "All tampered account events restored successfully")
+    @org.springframework.web.bind.annotation.PostMapping("/demo/restore-account/{accountId}")
+    public ResponseEntity<DTOs.TamperDemoResponse> restoreDemoAccount(@PathVariable("accountId") String accountId) {
+        DTOs.TamperDemoResponse response = auditComplianceService.restoreAccountEvents(accountId);
+        return ResponseEntity.ok(response);
+    }
 }
+
+

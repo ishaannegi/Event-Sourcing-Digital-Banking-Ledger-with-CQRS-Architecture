@@ -9,5 +9,7 @@ import java.util.UUID;
 @Repository
 public interface EventStoreRepository extends JpaRepository<EventEntity, UUID> {
     List<EventEntity> findByAggregateIdOrderByVersionAsc(String aggregateId);
+    List<EventEntity> findByAggregateIdAndVersionGreaterThanOrderByVersionAsc(String aggregateId, Long version);
     Optional<EventEntity> findTopByAggregateIdOrderByVersionDesc(String aggregateId);
 }
+

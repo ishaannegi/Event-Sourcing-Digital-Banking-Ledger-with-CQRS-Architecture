@@ -62,6 +62,7 @@ public class DTOs {
     public record LoginResponse(String token, String username, String role) {}
 
     public record HistoricalEventDetail(
+            String id,
             long version,
             String eventType,
             BigDecimal amount,
@@ -90,6 +91,40 @@ public class DTOs {
 
     public record AccountResponse(String accountId, String ownerName, BigDecimal balance, long version) {}
     public record TransferResponse(String transferId, String fromAccountId, String toAccountId, BigDecimal amount, String status) {}
-    public record EventLogResponse(String id, String aggregateId, String eventType, String payload, long version, java.time.Instant createdAt, BigDecimal amount, BigDecimal runningBalance) {}
+    public record EventLogResponse(
+            String id,
+            String aggregateId,
+            String eventType,
+            String payload,
+            long version,
+            java.time.Instant createdAt,
+            BigDecimal amount,
+            BigDecimal runningBalance,
+            String previousHash,
+            String hash,
+            String pqcSignature,
+            String pqcPublicKey,
+            String signatureAlgorithm
+    ) {}
+    public record EventChainVerificationResponse(
+            String accountId,
+            String status,
+            boolean chainIntact,
+            boolean pqcValid,
+            int eventsVerified,
+            Long brokenAtVersion,
+            String details,
+            java.time.Instant verifiedAt
+    ) {}
+    public record TamperDemoResponse(
+            String eventId,
+            long version,
+            boolean isTampered,
+            String originalPayload,
+            String currentPayload,
+            String message
+    ) {}
     public record ErrorResponse(int status, String error, String message, long timestamp) {}
 }
+
+

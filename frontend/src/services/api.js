@@ -84,4 +84,26 @@ export const getRegulatoryReportApi = async (from, to) => {
   return response.data;
 };
 
+export const verifyEventChainApi = async (accountId) => {
+  const response = await api.get(`/audit/accounts/${accountId}/verify-chain`);
+  return response.data;
+};
+
+export const tamperDemoEventApi = async (eventId) => {
+  const response = await api.post(`/audit/demo/tamper/${eventId}`);
+  return response.data;
+};
+
+export const restoreDemoEventApi = async (eventId) => {
+  const response = await api.post(`/audit/demo/restore/${eventId}`);
+  return response.data;
+};
+
+export const restoreDemoAccountApi = async (accountId) => {
+  const response = await api.post(`/audit/demo/restore-account/${accountId}`);
+  return response.data;
+};
+
 export default api;
+
+

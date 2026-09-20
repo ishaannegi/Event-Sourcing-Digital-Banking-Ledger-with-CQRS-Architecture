@@ -1,0 +1,8 @@
+ALTER TABLE events 
+ADD COLUMN IF NOT EXISTS previous_hash VARCHAR(128),
+ADD COLUMN IF NOT EXISTS hash VARCHAR(128),
+ADD COLUMN IF NOT EXISTS pqc_signature TEXT,
+ADD COLUMN IF NOT EXISTS pqc_public_key TEXT,
+ADD COLUMN IF NOT EXISTS signature_algorithm VARCHAR(50);
+
+CREATE INDEX IF NOT EXISTS idx_events_hash ON events (hash);

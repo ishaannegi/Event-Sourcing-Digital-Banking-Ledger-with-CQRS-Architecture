@@ -11,5 +11,7 @@ public interface AuditLogRepository extends JpaRepository<AuditLogEntity, Long> 
 
     List<AuditLogEntity> findByAggregateIdOrderByVersionAsc(String aggregateId);
 
+    java.util.Optional<AuditLogEntity> findByAggregateIdAndVersion(String aggregateId, Long version);
+
     List<AuditLogEntity> findByProcessedAtBetweenOrderByProcessedAtAsc(Instant from, Instant to);
 }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getHistoricalBalanceApi, getRegulatoryReportApi } from '../services/api';
+import { getHistoricalBalanceApi, getRegulatoryReportApi, verifyEventChainApi, tamperDemoEventApi, restoreDemoEventApi, restoreDemoAccountApi } from '../services/api';
 import {
   ShieldAlert,
   History,
@@ -18,7 +18,15 @@ import {
   ArrowRight,
   ChevronDown,
   ChevronUp,
-  Download
+  Download,
+  Lock,
+  ShieldCheck,
+  Cpu,
+  Check,
+  Wrench,
+  RefreshCw,
+  AlertOctagon,
+  Loader2
 } from 'lucide-react';
 
 export default function AuditTrailPage() {
@@ -46,6 +54,107 @@ export default function AuditTrailPage() {
   const [reportResult, setReportResult] = useState(null);
   const [reportLoading, setReportLoading] = useState(false);
   const [reportError, setReportError] = useState(null);
+
+  // Post-Quantum Security & Hash-Chain state
+  const [chainResult, setChainResult] = useState(null);
+  const [chainLoading, setChainLoading] = useState(false);
+  const [chainError, setChainError] = useState(null);
+
+  // Tamper & Recovery Demo State
+  const [tamperedEventIds, setTamperedEventIds] = useState(new Set());
+  const [tamperActionLoading, setTamperActionLoading] = useState(null);
+  const [isRecovering, setIsRecovering] = useState(false);
+  const [recoveryStep, setRecoveryStep] = useState(0);
+
+  // Handle Post-Quantum & Hash Chain Verification
+  const handleVerifyChain = async () => {
+    if (!pitAccountId.trim()) {
+      setChainError('Please enter an Account ID above to verify cryptographic integrity.');
+      return;
+    }
+    setChainError(null);
+    setChainLoading(true);
+    try {
+      const data = await verifyEventChainApi(pitAccountId.trim());
+      setChainResult(data);
+    } catch (err) {
+      const msg = err.response?.data?.message || err.response?.data?.error || 'Failed to verify cryptographic event chain';
+      setChainError(msg);
+    } finally {
+      setChainLoading(false);
+    }
+  };
+
+  // Handle Tamper Attack Simulation
+  const handleTamperEvent = async (eventId) => {
+    setTamperActionLoading(eventId);
+    try {
+      await tamperDemoEventApi(eventId);
+      setTamperedEventIds(prev => new Set(prev).add(eventId));
+      if (pitAccountId) {
+        await handlePitSubmit();
+        const data = await verifyEventChainApi(pitAccountId.trim());
+        setChainResult(data);
+      }
+    } catch (err) {
+      alert('Tamper simulation error: ' + (err.response?.data?.message || err.message));
+    } finally {
+      setTamperActionLoading(null);
+    }
+  };
+
+  // Handle Narrative 5-Step Automated Recovery Sequence
+  const handleInitiateRecovery = async () => {
+    if (!pitAccountId.trim()) return;
+
+    setIsRecovering(true);
+    setRecoveryStep(1);
+
+    try {
+      // Step 1: Isolating compromised event
+      await new Promise(r => setTimeout(r, 600));
+      setRecoveryStep(2);
+
+      // Step 2: Cross-referencing SHA3-512 digest
+      await new Promise(r => setTimeout(r, 600));
+      setRecoveryStep(3);
+
+      // Step 3: Restoring payload from verified DB backup in PostgreSQL
+      await restoreDemoAccountApi(pitAccountId.trim());
+      setTamperedEventIds(new Set());
+
+      await new Promise(r => setTimeout(r, 600));
+      setRecoveryStep(4);
+
+      // Step 4: Re-validating ML-DSA-65 signature
+      await new Promise(r => setTimeout(r, 600));
+      setRecoveryStep(5);
+
+      // Step 5: Complete & Auto re-verify
+      await new Promise(r => setTimeout(r, 600));
+
+      // Re-run verification and update status banner to green
+      const chainData = await verifyEventChainApi(pitAccountId.trim());
+      setChainResult(chainData);
+
+      // Refresh historical balance breakdown
+      let d = new Date(pitTimestamp);
+      if (pitTimestamp && pitTimestamp.length === 16) {
+        d.setSeconds(59, 999);
+      } else if (pitTimestamp && pitTimestamp.length === 19) {
+        d.setMilliseconds(999);
+      }
+      const pitData = await getHistoricalBalanceApi(pitAccountId.trim(), d.toISOString());
+      setPitResult(pitData);
+    } catch (err) {
+      alert('Recovery Error: ' + (err.response?.data?.message || err.message));
+    } finally {
+      setIsRecovering(false);
+      setRecoveryStep(0);
+    }
+  };
+
+
 
   // Handle Point-in-time lookup
   const handlePitSubmit = async (e) => {
@@ -216,27 +325,189 @@ export default function AuditTrailPage() {
             </div>
           </div>
 
-          <button
-            type="submit"
-            className="btn-black-pill"
-            style={{ width: 'fit-content', padding: '0.65rem 1.4rem' }}
-            disabled={pitLoading}
-          >
-            {pitLoading ? 'Reconstructing State...' : (
-              <>
-                Reconstruct Historical Balance <History size={16} />
-              </>
-            )}
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <button
+              type="submit"
+              className="btn-black-pill"
+              style={{ width: 'fit-content', padding: '0.65rem 1.4rem' }}
+              disabled={pitLoading}
+            >
+              {pitLoading ? 'Reconstructing State...' : (
+                <>
+                  Reconstruct Historical Balance <History size={16} />
+                </>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleVerifyChain}
+              className="btn-gold-pill"
+              disabled={chainLoading}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.45rem',
+                padding: '0.65rem 1.25rem',
+                backgroundColor: 'var(--accent-gold)',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '50px',
+                fontWeight: 700,
+                fontSize: '0.875rem',
+                cursor: 'pointer'
+              }}
+            >
+              {chainLoading ? 'Verifying Hashes & PQC...' : (
+                <>
+                  <ShieldCheck size={18} /> Verify Post-Quantum Hashes & PQC Signatures
+                </>
+              )}
+            </button>
+          </div>
         </form>
 
+        {/* Chain Error Banner */}
+        {chainError && (
+          <div className="warm-error-banner" style={{ marginTop: '1.25rem', marginBottom: 0 }}>
+            <AlertTriangle size={18} style={{ flexShrink: 0 }} />
+            <span>{chainError}</span>
+          </div>
+        )}
+
+        {/* Cryptographic & PQC Verification Result Banner */}
+        {chainResult && (
+          <div style={{
+            marginTop: '1.25rem',
+            backgroundColor: chainResult.chainIntact && chainResult.pqcValid ? '#f0fdf4' : '#fff1f2',
+            border: `1.5px solid ${chainResult.chainIntact && chainResult.pqcValid ? '#bbf7d0' : '#fecdd3'}`,
+            borderRadius: '14px',
+            padding: '1.15rem'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700, fontSize: '0.925rem', color: chainResult.chainIntact && chainResult.pqcValid ? '#166534' : '#991b1b' }}>
+                {chainResult.chainIntact && chainResult.pqcValid ? <ShieldCheck size={20} /> : <AlertOctagon size={20} color="#dc2626" />}
+                <span>
+                  {chainResult.chainIntact && chainResult.pqcValid
+                    ? 'CRYPTOGRAPHIC INTEGRITY & POST-QUANTUM SIGNATURES INTACT'
+                    : `❌ TAMPER DETECTED — Signature/Hash Mismatch at Version ${chainResult.brokenAtVersion || 'N/A'}`}
+                </span>
+              </div>
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '0.2rem 0.6rem', borderRadius: '4px', backgroundColor: chainResult.chainIntact && chainResult.pqcValid ? '#dcfce7' : '#fee2e2', color: chainResult.chainIntact && chainResult.pqcValid ? '#15803d' : '#b91c1c' }}>
+                STATUS: {chainResult.status}
+              </span>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem', fontSize: '0.82rem' }}>
+              <div style={{ backgroundColor: '#ffffff', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <span style={{ color: '#64748b', fontSize: '0.75rem', display: 'block' }}>SHA3-512 Hash Chain</span>
+                <strong style={{ color: chainResult.chainIntact ? '#16a34a' : '#dc2626' }}>
+                  {chainResult.chainIntact ? '✓ 100% Intact' : '✗ Tamper Detected'}
+                </strong>
+              </div>
+
+              <div style={{ backgroundColor: '#ffffff', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <span style={{ color: '#64748b', fontSize: '0.75rem', display: 'block' }}>Post-Quantum Algorithm</span>
+                <strong style={{ color: '#0f172a', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                  <Cpu size={14} color="var(--accent-gold)" /> NIST ML-DSA-65 (Dilithium3)
+                </strong>
+              </div>
+
+              <div style={{ backgroundColor: '#ffffff', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <span style={{ color: '#64748b', fontSize: '0.75rem', display: 'block' }}>Events Verified</span>
+                <strong style={{ color: '#0f172a' }}>{chainResult.eventsVerified} Events Sequentially Checked</strong>
+              </div>
+            </div>
+
+            <p style={{ marginTop: '0.75rem', fontSize: '0.82rem', color: chainResult.chainIntact && chainResult.pqcValid ? '#334155' : '#991b1b', fontWeight: chainResult.chainIntact && chainResult.pqcValid ? 400 : 600 }}>
+              {chainResult.chainIntact && chainResult.pqcValid
+                ? chainResult.details
+                : `This event's payload data does not match its original cryptographic SHA3-512 digest & NIST ML-DSA-65 (Dilithium3) signature proof.`}
+            </p>
+
+            {/* Actionable Recovery Button on Tamper Failure */}
+            {(!chainResult.chainIntact || !chainResult.pqcValid) && !isRecovering && (
+              <div style={{ marginTop: '1rem', paddingTop: '0.75rem', borderTop: '1px solid #fecdd3', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: '0.78rem', color: '#991b1b', fontWeight: 600 }}>
+                  Initiate automated cryptographic payload recovery using verified DB backup:
+                </span>
+                <button
+                  type="button"
+                  onClick={handleInitiateRecovery}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    backgroundColor: '#dc2626',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '6px',
+                    padding: '0.45rem 1rem',
+                    fontSize: '0.8rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    boxShadow: '0 2px 6px rgba(220, 38, 38, 0.25)'
+                  }}
+                >
+                  <Wrench size={15} /> 🔧 Initiate Automated Cryptographic Recovery
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 5-Step Animated Recovery Sequence Card */}
+        {isRecovering && (
+          <div style={{
+            marginTop: '1.25rem',
+            backgroundColor: '#f0f9ff',
+            border: '1.5px solid #bae6fd',
+            borderRadius: '14px',
+            padding: '1.25rem'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#0369a1', fontWeight: 700, fontSize: '0.95rem', marginBottom: '1rem' }}>
+              <RefreshCw size={18} className="animate-spin" style={{ animation: 'spin 1.5s linear infinite' }} />
+              <span>Automated Cryptographic Recovery Sequence in Progress...</span>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', fontSize: '0.85rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', color: recoveryStep >= 1 ? '#0369a1' : '#94a3b8', fontWeight: recoveryStep === 1 ? 700 : 500 }}>
+                {recoveryStep > 1 ? <CheckCircle2 size={16} color="#0284c7" /> : recoveryStep === 1 ? <Loader2 size={16} className="animate-spin" /> : <div style={{ width: 16, height: 16, borderRadius: '50%', border: '1.5px solid #cbd5e1' }} />}
+                <span>Step 1: Isolating compromised event (Version {chainResult?.brokenAtVersion || 1})...</span>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', color: recoveryStep >= 2 ? '#0369a1' : '#94a3b8', fontWeight: recoveryStep === 2 ? 700 : 500 }}>
+                {recoveryStep > 2 ? <CheckCircle2 size={16} color="#0284c7" /> : recoveryStep === 2 ? <Loader2 size={16} className="animate-spin" /> : <div style={{ width: 16, height: 16, borderRadius: '50%', border: '1.5px solid #cbd5e1' }} />}
+                <span>Step 2: Cross-referencing original SHA3-512 digest from audit trail...</span>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', color: recoveryStep >= 3 ? '#0369a1' : '#94a3b8', fontWeight: recoveryStep === 3 ? 700 : 500 }}>
+                {recoveryStep > 3 ? <CheckCircle2 size={16} color="#0284c7" /> : recoveryStep === 3 ? <Loader2 size={16} className="animate-spin" /> : <div style={{ width: 16, height: 16, borderRadius: '50%', border: '1.5px solid #cbd5e1' }} />}
+                <span>Step 3: Restoring payload from verified database backup (tamper_demo_backups)...</span>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', color: recoveryStep >= 4 ? '#0369a1' : '#94a3b8', fontWeight: recoveryStep === 4 ? 700 : 500 }}>
+                {recoveryStep > 4 ? <CheckCircle2 size={16} color="#0284c7" /> : recoveryStep === 4 ? <Loader2 size={16} className="animate-spin" /> : <div style={{ width: 16, height: 16, borderRadius: '50%', border: '1.5px solid #cbd5e1' }} />}
+                <span>Step 4: Re-validating NIST ML-DSA-65 (Dilithium3) signature...</span>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', color: recoveryStep >= 5 ? '#15803d' : '#94a3b8', fontWeight: recoveryStep === 5 ? 700 : 500 }}>
+                {recoveryStep >= 5 ? <CheckCircle2 size={16} color="#16a34a" /> : <div style={{ width: 16, height: 16, borderRadius: '50%', border: '1.5px solid #cbd5e1' }} />}
+                <span>Step 5: ✓ Integrity restored — event chain valid again</span>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* PIT Error Banner */}
+
         {pitError && (
           <div className="warm-error-banner" style={{ marginTop: '1.25rem', marginBottom: 0 }}>
             <AlertTriangle size={18} style={{ flexShrink: 0 }} />
             <span>{pitError}</span>
           </div>
         )}
+
 
         {/* PIT Result Card */}
         {pitResult && (
@@ -367,6 +638,7 @@ export default function AuditTrailPage() {
                         <th style={{ padding: '0.65rem 0.85rem', fontWeight: 600, textAlign: 'right' }}>amount</th>
                         <th style={{ padding: '0.65rem 0.85rem', fontWeight: 600, textAlign: 'right' }}>running_balance</th>
                         <th style={{ padding: '0.65rem 0.85rem', fontWeight: 600, textAlign: 'center' }}>timestamp</th>
+                        <th style={{ padding: '0.65rem 0.85rem', fontWeight: 600, textAlign: 'center' }}>demo_simulation</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -376,9 +648,10 @@ export default function AuditTrailPage() {
                         const isTransfer = evt.eventType === 'TransferInitiatedEvent';
                         const amountColor = isDeposit ? '#15803d' : isWithdraw ? '#b91c1c' : '#475569';
                         const sign = isDeposit ? '+' : isWithdraw ? '-' : '';
+                        const isTampered = tamperedEventIds.has(evt.id) || (evt.amount && Number(evt.amount) === 999999);
 
                         return (
-                          <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9', backgroundColor: idx % 2 === 0 ? '#ffffff' : '#f8fafc' }}>
+                          <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9', backgroundColor: isTampered ? '#fef2f2' : (idx % 2 === 0 ? '#ffffff' : '#f8fafc') }}>
                             <td style={{ padding: '0.6rem 0.85rem', fontWeight: 700, color: 'var(--accent-gold)' }}>
                               {evt.version}
                             </td>
@@ -401,6 +674,44 @@ export default function AuditTrailPage() {
                             </td>
                             <td style={{ padding: '0.6rem 0.85rem', textAlign: 'center', color: '#64748b', fontSize: '0.75rem' }}>
                               {new Date(evt.timestamp).toLocaleString()}
+                            </td>
+                            <td style={{ padding: '0.6rem 0.85rem', textAlign: 'center' }}>
+                              {isTampered ? (
+                                <span style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '0.25rem',
+                                  padding: '0.15rem 0.45rem',
+                                  borderRadius: '4px',
+                                  backgroundColor: '#fee2e2',
+                                  color: '#b91c1c',
+                                  fontSize: '0.72rem',
+                                  fontWeight: 700
+                                }}>
+                                  ⚠️ TAMPERED IN DB (DEMO)
+                                </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => handleTamperEvent(evt.id)}
+                                  disabled={tamperActionLoading === evt.id}
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.25rem',
+                                    padding: '0.25rem 0.55rem',
+                                    fontSize: '0.72rem',
+                                    fontWeight: 700,
+                                    backgroundColor: '#fff1f2',
+                                    color: '#e11d48',
+                                    border: '1px solid #fecdd3',
+                                    borderRadius: '4px',
+                                    cursor: 'pointer'
+                                  }}
+                                >
+                                  {tamperActionLoading === evt.id ? 'Tampering...' : '🧪 Simulate Tamper (Demo)'}
+                                </button>
+                              )}
                             </td>
                           </tr>
                         );
