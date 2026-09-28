@@ -21,6 +21,7 @@ class AuditComplianceServiceTest {
     private AuditLogRepository repository;
     private com.bank.ledger.eventstore.EventStoreRepository eventStoreRepository;
     private TamperDemoBackupRepository tamperDemoBackupRepository;
+    private com.bank.ledger.readmodel.AccountBalanceRepository accountBalanceRepository;
     private ObjectMapper objectMapper;
     private com.bank.ledger.security.PqcKeyManagementService pqcKeyManagementService;
     private AuditComplianceService service;
@@ -30,11 +31,12 @@ class AuditComplianceServiceTest {
         repository = mock(AuditLogRepository.class);
         eventStoreRepository = mock(com.bank.ledger.eventstore.EventStoreRepository.class);
         tamperDemoBackupRepository = mock(TamperDemoBackupRepository.class);
+        accountBalanceRepository = mock(com.bank.ledger.readmodel.AccountBalanceRepository.class);
         objectMapper = new ObjectMapper()
                 .findAndRegisterModules()
                 .configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
         pqcKeyManagementService = new com.bank.ledger.security.PqcKeyManagementService();
-        service = new AuditComplianceService(repository, eventStoreRepository, tamperDemoBackupRepository, objectMapper, pqcKeyManagementService);
+        service = new AuditComplianceService(repository, eventStoreRepository, tamperDemoBackupRepository, accountBalanceRepository, objectMapper, pqcKeyManagementService);
     }
 
 

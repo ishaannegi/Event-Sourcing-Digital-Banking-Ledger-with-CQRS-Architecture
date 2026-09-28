@@ -79,6 +79,19 @@ public class AuditController {
     }
 
     @Operation(
+            summary = "Unified Dashboard Summary (ADMIN & CUSTOMER)",
+            description = "Returns aggregate dashboard analytics including total combined balance, account counts, total event counts, deposit/withdrawal totals, recent activity, and chart metrics scoped by RBAC."
+    )
+    @ApiResponse(responseCode = "200", description = "Dashboard summary fetched successfully")
+    @ApiResponse(responseCode = "401", description = "Missing or invalid Bearer JWT token")
+    @GetMapping("/dashboard-summary")
+    @PreAuthorize("hasAnyRole('ADMIN', 'CUSTOMER')")
+    public ResponseEntity<DTOs.DashboardSummaryResponse> getDashboardSummary() {
+        DTOs.DashboardSummaryResponse response = auditComplianceService.getDashboardSummary();
+        return ResponseEntity.ok(response);
+    }
+
+    @Operation(
             summary = "DEMO ONLY - Simulate SQL Payload Tampering (ADMIN Only)",
             description = "Directly alters an event's JSON payload in the PostgreSQL events table without updating hashes or signatures to simulate SQL tampering outside normal application write path."
     )

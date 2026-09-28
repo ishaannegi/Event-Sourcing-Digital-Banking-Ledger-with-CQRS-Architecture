@@ -29,17 +29,20 @@ public class AuditComplianceService {
     private final AuditLogRepository auditLogRepository;
     private final com.bank.ledger.eventstore.EventStoreRepository eventStoreRepository;
     private final TamperDemoBackupRepository tamperDemoBackupRepository;
+    private final com.bank.ledger.readmodel.AccountBalanceRepository accountBalanceRepository;
     private final ObjectMapper objectMapper;
     private final com.bank.ledger.security.PqcKeyManagementService pqcKeyManagementService;
 
     public AuditComplianceService(AuditLogRepository auditLogRepository,
                                   com.bank.ledger.eventstore.EventStoreRepository eventStoreRepository,
                                   TamperDemoBackupRepository tamperDemoBackupRepository,
+                                  com.bank.ledger.readmodel.AccountBalanceRepository accountBalanceRepository,
                                   ObjectMapper objectMapper,
                                   com.bank.ledger.security.PqcKeyManagementService pqcKeyManagementService) {
         this.auditLogRepository = auditLogRepository;
         this.eventStoreRepository = eventStoreRepository;
         this.tamperDemoBackupRepository = tamperDemoBackupRepository;
+        this.accountBalanceRepository = accountBalanceRepository;
         this.objectMapper = objectMapper.copy()
                 .findAndRegisterModules()
                 .configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
@@ -471,6 +474,161 @@ public class AuditComplianceService {
                 totalTransactions,
                 totalVolume,
                 accountTransactionCounts,
+                Instant.now()
+        );
+    }
+
+    /**
+     * Unified Dashboard Summary (CQRS & Event Sourcing):
+     * Computes total combined balance, event counts, deposit/withdrawal totals,
+     * live activity feed, and time-series chart data in a single fast backend operation.
+     * Scoped by RBAC (CUSTOMER role sees only their own accounts, ADMIN sees system-wide).
+     */
+    public DTOs.DashboardSummaryResponse getDashboardSummary() {
+        org.springframework.security.core.Authentication auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated()) {
+            throw new org.springframework.security.access.AccessDeniedException("Full authentication required to access dashboard summary");
+        }
+
+        boolean isAdmin = auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
+        String username = auth.getName();
+
+        List<com.bank.ledger.readmodel.AccountBalanceEntity> targetAccounts;
+        if (isAdmin) {
+            targetAccounts = accountBalanceRepository.findAll();
+        } else {
+            targetAccounts = accountBalanceRepository.findByOwnerNameIgnoreCase(username);
+        }
+
+        List<String> accountIds = targetAccounts.stream()
+                .map(com.bank.ledger.readmodel.AccountBalanceEntity::getAccountId)
+                .collect(Collectors.toList());
+
+        BigDecimal totalCombinedBalance = targetAccounts.stream()
+                .map(com.bank.ledger.readmodel.AccountBalanceEntity::getBalance)
+                .filter(java.util.Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        long totalAccounts = targetAccounts.size();
+
+        if (accountIds.isEmpty()) {
+            return new DTOs.DashboardSummaryResponse(
+                    BigDecimal.ZERO,
+                    0L,
+                    0L,
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    List.of(),
+                    List.of(),
+                    Instant.now()
+            );
+        }
+
+        List<com.bank.ledger.eventstore.EventEntity> allEvents;
+        List<com.bank.ledger.eventstore.EventEntity> recentEntities;
+        if (isAdmin) {
+            allEvents = eventStoreRepository.findAll();
+            recentEntities = eventStoreRepository.findTop50ByOrderByCreatedAtDesc();
+        } else {
+            allEvents = eventStoreRepository.findByAggregateIdInOrderByVersionAsc(accountIds);
+            recentEntities = eventStoreRepository.findTop50ByAggregateIdInOrderByCreatedAtDesc(accountIds);
+        }
+
+        long totalEventsProcessed = allEvents.size();
+        BigDecimal totalDepositsSum = BigDecimal.ZERO;
+        BigDecimal totalWithdrawalsSum = BigDecimal.ZERO;
+        Map<String, BigDecimal[]> dailyMap = new java.util.TreeMap<>();
+
+        java.time.format.DateTimeFormatter dateFormatter = java.time.format.DateTimeFormatter.ofPattern("MMM dd")
+                .withZone(java.time.ZoneId.of("UTC"));
+
+        for (com.bank.ledger.eventstore.EventEntity e : allEvents) {
+            BigDecimal amt = BigDecimal.ZERO;
+            boolean isDeposit = false;
+            boolean isWithdrawal = false;
+
+            try {
+                DomainEvent ev = objectMapper.readValue(e.getPayload(), DomainEvent.class);
+                if (ev instanceof AccountOpenedEvent aoe) {
+                    amt = aoe.getInitialBalance() != null ? aoe.getInitialBalance() : BigDecimal.ZERO;
+                    isDeposit = true;
+                } else if (ev instanceof FundsDepositedEvent fde) {
+                    amt = fde.getAmount() != null ? fde.getAmount() : BigDecimal.ZERO;
+                    isDeposit = true;
+                } else if (ev instanceof FundsWithdrawnEvent fwe) {
+                    amt = fwe.getAmount() != null ? fwe.getAmount() : BigDecimal.ZERO;
+                    isWithdrawal = true;
+                } else if (ev instanceof TransferInitiatedEvent tie) {
+                    amt = tie.getAmount() != null ? tie.getAmount() : BigDecimal.ZERO;
+                    isWithdrawal = true;
+                }
+            } catch (Exception ex) {
+                // Ignore parse errors
+            }
+
+            if (isDeposit) {
+                totalDepositsSum = totalDepositsSum.add(amt);
+            } else if (isWithdrawal) {
+                totalWithdrawalsSum = totalWithdrawalsSum.add(amt);
+            }
+
+            if (e.getCreatedAt() != null) {
+                String dateStr = dateFormatter.format(e.getCreatedAt());
+                BigDecimal[] pair = dailyMap.computeIfAbsent(dateStr, k -> new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO});
+                if (isDeposit) {
+                    pair[0] = pair[0].add(amt);
+                } else if (isWithdrawal) {
+                    pair[1] = pair[1].add(amt);
+                }
+            }
+        }
+
+        List<DTOs.DashboardDailyChartItem> chartData = new ArrayList<>();
+        dailyMap.forEach((date, pair) -> chartData.add(new DTOs.DashboardDailyChartItem(date, pair[0], pair[1])));
+
+        List<DTOs.EventLogResponse> recentEvents = new ArrayList<>();
+        for (com.bank.ledger.eventstore.EventEntity e : recentEntities) {
+            BigDecimal deltaAmount = BigDecimal.ZERO;
+            try {
+                DomainEvent ev = objectMapper.readValue(e.getPayload(), DomainEvent.class);
+                if (ev instanceof AccountOpenedEvent aoe) {
+                    deltaAmount = aoe.getInitialBalance() != null ? aoe.getInitialBalance() : BigDecimal.ZERO;
+                } else if (ev instanceof FundsDepositedEvent fde) {
+                    deltaAmount = fde.getAmount() != null ? fde.getAmount() : BigDecimal.ZERO;
+                } else if (ev instanceof FundsWithdrawnEvent fwe) {
+                    deltaAmount = fwe.getAmount() != null ? fwe.getAmount() : BigDecimal.ZERO;
+                } else if (ev instanceof TransferInitiatedEvent tie) {
+                    deltaAmount = tie.getAmount() != null ? tie.getAmount() : BigDecimal.ZERO;
+                }
+            } catch (Exception ex) {
+                // Ignore parse errors
+            }
+
+            recentEvents.add(new DTOs.EventLogResponse(
+                    e.getId() != null ? e.getId().toString() : null,
+                    e.getAggregateId(),
+                    e.getEventType(),
+                    e.getPayload(),
+                    e.getVersion(),
+                    e.getCreatedAt(),
+                    deltaAmount,
+                    BigDecimal.ZERO,
+                    e.getPreviousHash(),
+                    e.getHash(),
+                    e.getPqcSignature(),
+                    e.getPqcPublicKey(),
+                    e.getSignatureAlgorithm()
+            ));
+        }
+
+        return new DTOs.DashboardSummaryResponse(
+                totalCombinedBalance,
+                totalAccounts,
+                totalEventsProcessed,
+                totalDepositsSum,
+                totalWithdrawalsSum,
+                recentEvents,
+                chartData,
                 Instant.now()
         );
     }

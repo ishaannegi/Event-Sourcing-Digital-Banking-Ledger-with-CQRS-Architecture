@@ -11,5 +11,8 @@ public interface EventStoreRepository extends JpaRepository<EventEntity, UUID> {
     List<EventEntity> findByAggregateIdOrderByVersionAsc(String aggregateId);
     List<EventEntity> findByAggregateIdAndVersionGreaterThanOrderByVersionAsc(String aggregateId, Long version);
     Optional<EventEntity> findTopByAggregateIdOrderByVersionDesc(String aggregateId);
+    List<EventEntity> findByAggregateIdInOrderByVersionAsc(List<String> aggregateIds);
+    List<EventEntity> findTop50ByOrderByCreatedAtDesc();
+    List<EventEntity> findTop50ByAggregateIdInOrderByCreatedAtDesc(List<String> aggregateIds);
 }
 

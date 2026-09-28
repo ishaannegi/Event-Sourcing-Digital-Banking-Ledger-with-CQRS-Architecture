@@ -1,9 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import {
-  getRegulatoryReportApi,
-  getAccountEventsApi,
-  getAccountApi
+  getDashboardSummaryApi
 } from '../services/api';
 import AccountsPage from './AccountsPage';
 import AuditTrailPage from './AuditTrailPage';
@@ -54,8 +52,8 @@ export default function DashboardPage() {
   // Dashboard Metrics & Chart State
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [reportData, setReportData] = useState(null);
-  const [accountList, setAccountList] = useState([]);
+  const [totalAccountsCount, setTotalAccountsCount] = useState(0);
+  const [totalEventsProcessed, setTotalEventsProcessed] = useState(0);
   const [recentEvents, setRecentEvents] = useState([]);
   const [chartData, setChartData] = useState([]);
   const [totalCombinedBalance, setTotalCombinedBalance] = useState(0);
@@ -63,84 +61,21 @@ export default function DashboardPage() {
   const [totalWithdrawalsSum, setTotalWithdrawalsSum] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Fetch real portal data across accounts & event streams
+  // Unified single backend endpoint fetch for dashboard analytics
   const fetchDashboardData = async () => {
     setIsRefreshing(true);
     try {
-      // 1. Fetch regulatory report for overall metrics
-      const now = new Date();
-      const pastYear = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
-      const report = await getRegulatoryReportApi(pastYear.toISOString(), now.toISOString());
-      setReportData(report);
-
-      const accCounts = report.accountTransactionCounts || {};
-      const accountIds = Object.keys(accCounts);
-
-      let aggregatedBalance = 0;
-      let sumDeposits = 0;
-      let sumWithdrawals = 0;
-      let allEventsCollected = [];
-      let accountsDetail = [];
-
-      // 2. Fetch events & balance view for each aggregate account
-      for (const accId of accountIds) {
-        try {
-          const [accDetails, events] = await Promise.all([
-            getAccountApi(accId).catch(() => null),
-            getAccountEventsApi(accId).catch(() => [])
-          ]);
-
-          if (accDetails) {
-            accountsDetail.push(accDetails);
-            aggregatedBalance += Number(accDetails.balance || 0);
-          }
-
-          if (events && events.length > 0) {
-            allEventsCollected.push(...events);
-          }
-        } catch (err) {
-          console.warn(`Failed to fetch event stream for account ${accId}:`, err);
-        }
-      }
-
-      setAccountList(accountsDetail);
-      setTotalCombinedBalance(aggregatedBalance);
-
-      // 3. Process events to build sums, activity feed, and time-series chart data
-      allEventsCollected.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-      setRecentEvents(allEventsCollected.slice(0, 25)); // Top 25 recent events
-
-      // Build daily time-series aggregation for Recharts
-      const dateMap = {};
-
-      allEventsCollected.forEach(ev => {
-        const dateStr = new Date(ev.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-        if (!dateMap[dateStr]) {
-          dateMap[dateStr] = { date: dateStr, deposits: 0, withdrawals: 0, rawDate: new Date(ev.createdAt) };
-        }
-
-        const amt = Number(ev.amount || 0);
-        if (ev.eventType === 'FundsDepositedEvent' || ev.eventType === 'AccountOpenedEvent') {
-          sumDeposits += amt;
-          dateMap[dateStr].deposits += amt;
-        } else if (ev.eventType === 'FundsWithdrawnEvent' || ev.eventType === 'TransferInitiatedEvent') {
-          sumWithdrawals += amt;
-          dateMap[dateStr].withdrawals += amt;
-        }
-      });
-
-      setTotalDepositsSum(sumDeposits);
-      setTotalWithdrawalsSum(sumWithdrawals);
-
-      // Convert dateMap to sorted array for chart
-      const chartArray = Object.values(dateMap)
-        .sort((a, b) => a.rawDate - b.rawDate)
-        .slice(-14); // Last 14 active days
-
-      setChartData(chartArray);
+      const summary = await getDashboardSummaryApi();
+      setTotalCombinedBalance(Number(summary.totalCombinedBalance || 0));
+      setTotalAccountsCount(Number(summary.totalAccounts || 0));
+      setTotalEventsProcessed(Number(summary.totalEventsProcessed || 0));
+      setTotalDepositsSum(Number(summary.totalDepositsSum || 0));
+      setTotalWithdrawalsSum(Number(summary.totalWithdrawalsSum || 0));
+      setRecentEvents(summary.recentEvents || []);
+      setChartData(summary.chartData || []);
       setError(null);
     } catch (err) {
-      console.error('Error loading dashboard data:', err);
+      console.error('Error loading dashboard summary:', err);
       setError(err.response?.data?.message || err.message || 'Failed to load live dashboard data');
     } finally {
       setLoading(false);
@@ -459,7 +394,7 @@ export default function DashboardPage() {
                   </div>
                 </div>
                 <div style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--text-dark)' }}>
-                  {loading ? '...' : accountList.length}
+                  {loading ? '...' : totalAccountsCount}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginTop: '0.4rem', fontSize: '0.78rem', color: '#16a34a', fontWeight: 600 }}>
                   <TrendingUp size={14} /> <span>100% Active in Aggregate</span>
@@ -477,7 +412,7 @@ export default function DashboardPage() {
                   </div>
                 </div>
                 <div style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--text-dark)' }}>
-                  {loading ? '...' : (reportData?.totalTransactions || recentEvents.length || 0)}
+                  {loading ? '...' : totalEventsProcessed}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginTop: '0.4rem', fontSize: '0.78rem', color: 'var(--accent-gold)', fontWeight: 600 }}>
                   <Zap size={14} /> <span>Kafka Event-Streamed</span>

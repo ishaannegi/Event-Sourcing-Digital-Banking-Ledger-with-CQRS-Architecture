@@ -104,6 +104,11 @@ export const restoreDemoAccountApi = async (accountId) => {
   return response.data;
 };
 
+export const getDashboardSummaryApi = async () => {
+  const response = await api.get('/audit/dashboard-summary');
+  return response.data;
+};
+
 export default api;
 
 

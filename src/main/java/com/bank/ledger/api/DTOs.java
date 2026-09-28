@@ -124,6 +124,21 @@ public class DTOs {
             String currentPayload,
             String message
     ) {}
+    public record DashboardDailyChartItem(
+            String date,
+            BigDecimal deposits,
+            BigDecimal withdrawals
+    ) {}
+    public record DashboardSummaryResponse(
+            BigDecimal totalCombinedBalance,
+            long totalAccounts,
+            long totalEventsProcessed,
+            BigDecimal totalDepositsSum,
+            BigDecimal totalWithdrawalsSum,
+            java.util.List<EventLogResponse> recentEvents,
+            java.util.List<DashboardDailyChartItem> chartData,
+            java.time.Instant generatedAt
+    ) {}
     public record ErrorResponse(int status, String error, String message, long timestamp) {}
 }
 

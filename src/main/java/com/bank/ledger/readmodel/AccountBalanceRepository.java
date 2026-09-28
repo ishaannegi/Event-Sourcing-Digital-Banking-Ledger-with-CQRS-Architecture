@@ -5,4 +5,5 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public interface AccountBalanceRepository extends JpaRepository<AccountBalanceEntity, String> {
+    java.util.List<AccountBalanceEntity> findByOwnerNameIgnoreCase(String ownerName);
 }
