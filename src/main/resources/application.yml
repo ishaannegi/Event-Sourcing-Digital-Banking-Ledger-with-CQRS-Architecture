@@ -2,7 +2,7 @@ spring:
   application:
     name: digital-banking-ledger
   datasource:
-    url: jdbc:postgresql://localhost:5432/ledger_db
+    url: jdbc:postgresql://127.0.0.1:5432/ledger_db?sslmode=disable
     username: postgres
     password: postgres
     driver-class-name: org.postgresql.Driver
@@ -18,7 +18,7 @@ spring:
     baseline-on-migrate: true
     locations: classpath:db/migration
   kafka:
-    bootstrap-servers: localhost:9092
+    bootstrap-servers: 127.0.0.1:9092
     consumer:
       group-id: ledger-group
       auto-offset-reset: earliest
@@ -69,4 +69,8 @@ springdoc:
 logging:
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] [%X{correlationId:-N/A}] %-5level %logger{36} - %msg%n"
+
+ledger:
+  publish:
+    mode: cdc
 

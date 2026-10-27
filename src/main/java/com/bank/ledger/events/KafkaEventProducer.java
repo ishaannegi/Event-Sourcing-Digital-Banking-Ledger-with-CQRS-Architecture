@@ -14,6 +14,9 @@ public class KafkaEventProducer {
     private static final Logger log = LoggerFactory.getLogger(KafkaEventProducer.class);
     private final KafkaTemplate<String, String> kafkaTemplate;
 
+    @org.springframework.beans.factory.annotation.Value("${ledger.publish.mode:direct}")
+    private String publishMode;
+
     public KafkaEventProducer(KafkaTemplate<String, String> kafkaTemplate) {
         this.kafkaTemplate = kafkaTemplate;
     }
@@ -25,6 +28,11 @@ public class KafkaEventProducer {
      * For this project, we attempt direct publish and log errors without failing the DB transaction.
      */
     public void publishEvent(String aggregateId, String eventType, String payload, long version) {
+        if ("cdc".equalsIgnoreCase(publishMode)) {
+            log.debug("[CDC MODE] Skipping direct Kafka publish for event [{}] aggregate [{}] version [{}]",
+                    eventType, aggregateId, version);
+            return;
+        }
         try {
             ProducerRecord<String, String> record = new ProducerRecord<>(
                     KafkaTopicConfig.LEDGER_EVENTS_TOPIC,

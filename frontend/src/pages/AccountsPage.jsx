@@ -71,6 +71,24 @@ const saveKnownAccountId = (accountId, user) => {
   }
 };
 
+const removeKnownAccountId = (accountId, user) => {
+  if (!accountId) return;
+  try {
+    const rawUser = localStorage.getItem(`ledger_accounts_${user}`);
+    if (rawUser) {
+      const userIds = JSON.parse(rawUser).filter(id => id !== accountId);
+      localStorage.setItem(`ledger_accounts_${user}`, JSON.stringify(userIds));
+    }
+    const rawGlobal = localStorage.getItem('ledger_known_accounts');
+    if (rawGlobal) {
+      const globalIds = JSON.parse(rawGlobal).filter(id => id !== accountId);
+      localStorage.setItem('ledger_known_accounts', JSON.stringify(globalIds));
+    }
+  } catch (e) {
+    console.error('Failed to remove account ID from localStorage', e);
+  }
+};
+
 export default function AccountsPage() {
   const { username, role, token } = useAuth();
   const isAdmin = role === 'ADMIN' || role === 'ROLE_ADMIN';
@@ -141,6 +159,17 @@ export default function AccountsPage() {
       setGlobalError(null);
       return data;
     } catch (err) {
+      if (err.response?.status === 404 || err.response?.status === 403) {
+        setAccountsMap(prev => {
+          if (!prev[cleanId]) return prev;
+          const next = { ...prev };
+          delete next[cleanId];
+          return next;
+        });
+        if (err.response?.status === 404) {
+          removeKnownAccountId(cleanId, username);
+        }
+      }
       const msg = err.response?.data?.message || err.response?.data?.error || `Failed to load account [${cleanId}]`;
       if (!silent) setGlobalError(msg);
       throw err;

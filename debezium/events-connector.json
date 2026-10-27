@@ -1,0 +1,50 @@
+{
+  "name": "events-cdc-connector",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "tasks.max": "1",
+    "plugin.name": "pgoutput",
+    "database.hostname": "postgres",
+    "database.port": "5432",
+    "database.user": "postgres",
+    "database.password": "postgres",
+    "database.dbname": "ledger_db",
+    "topic.prefix": "cdc",
+    "table.include.list": "public.events",
+    "snapshot.mode": "no_data",
+    "slot.name": "debezium_events_slot",
+    "skipped.operations": "u,d",
+    "poll.interval.ms": "100",
+
+    "key.converter": "org.apache.kafka.connect.storage.StringConverter",
+    "value.converter": "org.apache.kafka.connect.storage.StringConverter",
+
+    "transforms": "unwrap,headerEventType,headerVersion,valToKey,extractKey,extractValue,route",
+
+    "transforms.unwrap.type": "io.debezium.transforms.ExtractNewRecordState",
+    "transforms.unwrap.drop.tombstones": "true",
+
+    "transforms.headerEventType.type": "org.apache.kafka.connect.transforms.HeaderFrom$Value",
+    "transforms.headerEventType.fields": "event_type",
+    "transforms.headerEventType.headers": "event_type",
+    "transforms.headerEventType.operation": "copy",
+
+    "transforms.headerVersion.type": "org.apache.kafka.connect.transforms.HeaderFrom$Value",
+    "transforms.headerVersion.fields": "version",
+    "transforms.headerVersion.headers": "version",
+    "transforms.headerVersion.operation": "copy",
+
+    "transforms.valToKey.type": "org.apache.kafka.connect.transforms.ValueToKey",
+    "transforms.valToKey.fields": "aggregate_id",
+
+    "transforms.extractKey.type": "org.apache.kafka.connect.transforms.ExtractField$Key",
+    "transforms.extractKey.field": "aggregate_id",
+
+    "transforms.extractValue.type": "org.apache.kafka.connect.transforms.ExtractField$Value",
+    "transforms.extractValue.field": "payload",
+
+    "transforms.route.type": "org.apache.kafka.connect.transforms.RegexRouter",
+    "transforms.route.regex": ".*",
+    "transforms.route.replacement": "ledger-events"
+  }
+}

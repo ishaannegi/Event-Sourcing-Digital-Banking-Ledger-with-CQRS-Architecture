@@ -537,10 +537,11 @@ public class AuditComplianceService {
         long totalEventsProcessed = allEvents.size();
         BigDecimal totalDepositsSum = BigDecimal.ZERO;
         BigDecimal totalWithdrawalsSum = BigDecimal.ZERO;
-        Map<String, BigDecimal[]> dailyMap = new java.util.TreeMap<>();
+        Map<java.time.LocalDate, BigDecimal[]> dailyMap = new java.util.TreeMap<>();
 
+        java.time.ZoneId utcZone = java.time.ZoneId.of("UTC");
         java.time.format.DateTimeFormatter dateFormatter = java.time.format.DateTimeFormatter.ofPattern("MMM dd")
-                .withZone(java.time.ZoneId.of("UTC"));
+                .withZone(utcZone);
 
         for (com.bank.ledger.eventstore.EventEntity e : allEvents) {
             BigDecimal amt = BigDecimal.ZERO;
@@ -558,9 +559,6 @@ public class AuditComplianceService {
                 } else if (ev instanceof FundsWithdrawnEvent fwe) {
                     amt = fwe.getAmount() != null ? fwe.getAmount() : BigDecimal.ZERO;
                     isWithdrawal = true;
-                } else if (ev instanceof TransferInitiatedEvent tie) {
-                    amt = tie.getAmount() != null ? tie.getAmount() : BigDecimal.ZERO;
-                    isWithdrawal = true;
                 }
             } catch (Exception ex) {
                 // Ignore parse errors
@@ -573,8 +571,8 @@ public class AuditComplianceService {
             }
 
             if (e.getCreatedAt() != null) {
-                String dateStr = dateFormatter.format(e.getCreatedAt());
-                BigDecimal[] pair = dailyMap.computeIfAbsent(dateStr, k -> new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO});
+                java.time.LocalDate localDate = e.getCreatedAt().atZone(utcZone).toLocalDate();
+                BigDecimal[] pair = dailyMap.computeIfAbsent(localDate, k -> new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO});
                 if (isDeposit) {
                     pair[0] = pair[0].add(amt);
                 } else if (isWithdrawal) {
@@ -584,7 +582,7 @@ public class AuditComplianceService {
         }
 
         List<DTOs.DashboardDailyChartItem> chartData = new ArrayList<>();
-        dailyMap.forEach((date, pair) -> chartData.add(new DTOs.DashboardDailyChartItem(date, pair[0], pair[1])));
+        dailyMap.forEach((localDate, pair) -> chartData.add(new DTOs.DashboardDailyChartItem(dateFormatter.format(localDate), pair[0], pair[1])));
 
         List<DTOs.EventLogResponse> recentEvents = new ArrayList<>();
         for (com.bank.ledger.eventstore.EventEntity e : recentEntities) {

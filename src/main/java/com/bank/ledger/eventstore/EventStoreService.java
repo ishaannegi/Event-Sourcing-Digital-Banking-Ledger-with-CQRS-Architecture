@@ -37,6 +37,10 @@ public class EventStoreService {
         return eventStoreRepository.findByAggregateIdOrderByVersionAsc(aggregateId);
     }
 
+    public List<EventEntity> loadAllTransferEvents() {
+        return eventStoreRepository.findByEventTypeOrderByCreatedAtAsc("TransferInitiatedEvent");
+    }
+
     public List<DomainEvent> loadEventStream(String aggregateId) {
         List<EventEntity> entities = eventStoreRepository.findByAggregateIdOrderByVersionAsc(aggregateId);
         List<DomainEvent> events = new ArrayList<>();

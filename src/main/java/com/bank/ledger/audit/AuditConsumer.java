@@ -46,24 +46,21 @@ public class AuditConsumer {
             Instant receivedAt = Instant.ofEpochMilli(record.timestamp());
             Instant processedAt = Instant.now();
 
-            if (auditLogRepository.findByAggregateIdAndVersion(aggregateId, version).isPresent()) {
-                log.info("[AUDIT SERVICE] Idempotent check: Event version [{}] for aggregate [{}] already exists in audit_log. Skipping.",
-                        version, aggregateId);
-                return;
-            }
-
-            // Tamper-evident Audit Entry (Signature column left null for Phase 8 Post-Quantum signature integration)
-            AuditLogEntity auditEntry = new AuditLogEntity(
+            int inserted = auditLogRepository.insertIgnoreConflict(
                     aggregateId,
                     eventType,
                     version,
                     payload,
-                    null, // Signature placeholder
+                    null,
                     receivedAt,
                     processedAt
             );
 
-            auditLogRepository.save(auditEntry);
+            if (inserted == 0) {
+                log.info("[AUDIT SERVICE] Idempotent check (ON CONFLICT DO NOTHING): Event version [{}] for aggregate [{}] already exists in audit_log. Skipping.",
+                        version, aggregateId);
+                return;
+            }
 
             log.info("[AUDIT SERVICE] Recorded event [{}] for aggregate [{}] version [{}] into tamper-evident audit_log (Offset: {})",
                     eventType, aggregateId, version, record.offset());

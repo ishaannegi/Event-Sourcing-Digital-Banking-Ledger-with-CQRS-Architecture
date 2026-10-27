@@ -7,3 +7,6 @@ When the user explicitly asks for a plan, implementation plan, approach, or desi
 4. Wait for explicit user approval before making any changes.
 
 For normal implementation requests (without a plan request), continue with autonomous execution.
+
+
+DO NOT PUSH TO GIT UNLESS I SPECIFY YOU TO DO SO

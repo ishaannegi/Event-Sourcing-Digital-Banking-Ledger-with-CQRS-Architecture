@@ -70,6 +70,12 @@ export const getAccountEventsApi = async (accountId) => {
   return response.data;
 };
 
+export const getUserTransactionsApi = async (accountId = null) => {
+  const params = accountId ? { accountId } : {};
+  const response = await api.get('/accounts/user-transactions', { params });
+  return response.data;
+};
+
 export const getHistoricalBalanceApi = async (accountId, timestamp) => {
   const response = await api.get(`/audit/accounts/${accountId}/balance-at`, {
     params: { timestamp }
@@ -106,6 +112,11 @@ export const restoreDemoAccountApi = async (accountId) => {
 
 export const getDashboardSummaryApi = async () => {
   const response = await api.get('/audit/dashboard-summary');
+  return response.data;
+};
+
+export const getCustomerSummaryApi = async () => {
+  const response = await api.get('/accounts/customer-summary');
   return response.data;
 };
 

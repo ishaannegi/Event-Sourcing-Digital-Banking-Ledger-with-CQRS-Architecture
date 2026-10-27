@@ -27,6 +27,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.bank.ledger.eventstore.EventEntity;
 import com.bank.ledger.eventstore.EventStoreService;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 
@@ -315,6 +316,229 @@ public class AccountController {
         }
 
         return ResponseEntity.ok(responseList);
+    }
+
+    @Operation(
+            summary = "Get user transactions across all owned accounts",
+            description = "Returns aggregated transactions across all accounts owned by the authenticated user in reverse chronological order."
+    )
+    @ApiResponse(responseCode = "200", description = "Transactions retrieved successfully")
+    @ApiResponse(responseCode = "401", description = "Missing or invalid Bearer JWT token")
+    @GetMapping("/user-transactions")
+    public ResponseEntity<List<DTOs.UserTransactionResponse>> getUserTransactions(
+            @org.springframework.web.bind.annotation.RequestParam(value = "accountId", required = false) String filterAccountId
+    ) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated()) {
+            throw new AccessDeniedException("Full authentication is required to access this resource.");
+        }
+
+        boolean isAdmin = auth.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN") || a.getAuthority().equals("ADMIN"));
+        String currentUsername = auth.getName();
+
+        List<com.bank.ledger.readmodel.AccountBalanceEntity> targetAccounts;
+        if (filterAccountId != null && !filterAccountId.isBlank()) {
+            AccountAggregate aggregate = commandHandler.loadAggregate(filterAccountId);
+            if (!aggregate.isActive()) {
+                return ResponseEntity.notFound().build();
+            }
+            validateAccountOwnership(aggregate.getOwnerName());
+            com.bank.ledger.readmodel.AccountBalanceEntity dummy = new com.bank.ledger.readmodel.AccountBalanceEntity(
+                    aggregate.getAccountId(), aggregate.getOwnerName(), aggregate.getBalance(), aggregate.getVersion(), java.time.Instant.now()
+            );
+            targetAccounts = List.of(dummy);
+        } else if (isAdmin) {
+            targetAccounts = accountBalanceRepository.findAll();
+        } else {
+            targetAccounts = accountBalanceRepository.findByOwnerNameIgnoreCase(currentUsername);
+        }
+
+        List<DTOs.UserTransactionResponse> allTx = new java.util.ArrayList<>();
+
+        // 1. Load all TransferInitiatedEvents to establish double-entry links
+        List<EventEntity> transferEntities = eventStoreService.loadAllTransferEvents();
+        record TransferDescriptor(
+                String transferId,
+                String fromAccountId,
+                String toAccountId,
+                java.math.BigDecimal amount,
+                java.time.Instant createdAt
+        ) {}
+
+        List<TransferDescriptor> allTransfers = new java.util.ArrayList<>();
+        for (EventEntity te : transferEntities) {
+            try {
+                com.bank.ledger.events.DomainEvent ev = objectMapper.readValue(te.getPayload(), com.bank.ledger.events.DomainEvent.class);
+                if (ev instanceof com.bank.ledger.events.TransferInitiatedEvent tie) {
+                    allTransfers.add(new TransferDescriptor(
+                            tie.getTransferId(),
+                            tie.getFromAccountId(),
+                            tie.getToAccountId(),
+                            tie.getAmount(),
+                            te.getCreatedAt() != null ? te.getCreatedAt() : tie.getTimestamp()
+                    ));
+                }
+            } catch (Exception ex) {
+                log.error("Failed to parse TransferInitiatedEvent payload: {}", ex.getMessage());
+            }
+        }
+
+        for (com.bank.ledger.readmodel.AccountBalanceEntity acc : targetAccounts) {
+            List<EventEntity> entities = eventStoreService.loadEventEntities(acc.getAccountId());
+            java.math.BigDecimal runningBalance = java.math.BigDecimal.ZERO;
+
+            for (EventEntity e : entities) {
+                java.math.BigDecimal signedAmount = java.math.BigDecimal.ZERO;
+                String typeLabel = e.getEventType();
+                String desc = "";
+                boolean skipRecord = false;
+
+                try {
+                    com.fasterxml.jackson.databind.JsonNode rootNode = objectMapper.readTree(e.getPayload());
+                    if (rootNode.has("description")) {
+                        desc = rootNode.path("description").asText("");
+                    }
+
+                    com.bank.ledger.events.DomainEvent event = objectMapper.readValue(e.getPayload(), com.bank.ledger.events.DomainEvent.class);
+                    if (event instanceof com.bank.ledger.events.AccountOpenedEvent ev) {
+                        typeLabel = "Account Opened";
+                        signedAmount = ev.getInitialBalance() != null ? ev.getInitialBalance() : java.math.BigDecimal.ZERO;
+                        runningBalance = runningBalance.add(signedAmount);
+                        if (desc.isBlank()) desc = "Initial opening balance";
+                    } else if (event instanceof com.bank.ledger.events.FundsDepositedEvent ev) {
+                        java.math.BigDecimal dAmount = ev.getAmount() != null ? ev.getAmount() : java.math.BigDecimal.ZERO;
+                        runningBalance = runningBalance.add(dAmount);
+
+                        // Check if this deposit is the CREDIT leg of a double-entry transfer
+                        TransferDescriptor matchedTransfer = null;
+                        for (TransferDescriptor tr : allTransfers) {
+                            if (acc.getAccountId().equals(tr.toAccountId())
+                                    && tr.amount() != null && tr.amount().compareTo(dAmount) == 0
+                                    && e.getCreatedAt() != null && tr.createdAt() != null
+                                    && Math.abs(java.time.Duration.between(e.getCreatedAt(), tr.createdAt()).toSeconds()) <= 5) {
+                                matchedTransfer = tr;
+                                break;
+                            }
+                        }
+
+                        if (matchedTransfer != null) {
+                            typeLabel = "Transfer Received";
+                            signedAmount = dAmount; // Positive Credit / Inflow
+                            if (desc.isBlank()) desc = "Transfer from " + matchedTransfer.fromAccountId();
+                        } else {
+                            typeLabel = "Deposit";
+                            signedAmount = dAmount;
+                            if (desc.isBlank()) desc = "Account deposit";
+                        }
+                    } else if (event instanceof com.bank.ledger.events.FundsWithdrawnEvent ev) {
+                        java.math.BigDecimal wAmount = ev.getAmount() != null ? ev.getAmount() : java.math.BigDecimal.ZERO;
+                        runningBalance = runningBalance.subtract(wAmount);
+
+                        // Check if this withdrawal was the internal debit accompanying a TransferInitiatedEvent
+                        boolean isTransferDebit = false;
+                        for (TransferDescriptor tr : allTransfers) {
+                            if (acc.getAccountId().equals(tr.fromAccountId())
+                                    && tr.amount() != null && tr.amount().compareTo(wAmount) == 0
+                                    && e.getCreatedAt() != null && tr.createdAt() != null
+                                    && Math.abs(java.time.Duration.between(e.getCreatedAt(), tr.createdAt()).toSeconds()) <= 5) {
+                                isTransferDebit = true;
+                                break;
+                            }
+                        }
+
+                        if (isTransferDebit) {
+                            // Handled by TransferInitiatedEvent to avoid double-counting in transactions ledger
+                            skipRecord = true;
+                        } else {
+                            typeLabel = "Withdrawal";
+                            signedAmount = wAmount.negate();
+                            if (desc.isBlank()) desc = "Account withdrawal";
+                        }
+                    } else if (event instanceof com.bank.ledger.events.TransferInitiatedEvent ev) {
+                        typeLabel = "Transfer Sent";
+                        java.math.BigDecimal tAmount = ev.getAmount() != null ? ev.getAmount() : java.math.BigDecimal.ZERO;
+                        signedAmount = tAmount.negate(); // Negative Debit / Outflow
+                        if (desc.isBlank()) desc = "Transfer to " + ev.getToAccountId();
+                    }
+                } catch (Exception ex) {
+                    log.error("Failed to parse event payload for transaction mapping: {}", ex.getMessage());
+                }
+
+                if (!skipRecord) {
+                    allTx.add(new DTOs.UserTransactionResponse(
+                            e.getId() != null ? e.getId().toString() : java.util.UUID.randomUUID().toString(),
+                            e.getAggregateId(),
+                            acc.getOwnerName(),
+                            e.getEventType(),
+                            typeLabel,
+                            signedAmount,
+                            runningBalance,
+                            e.getCreatedAt(),
+                            desc,
+                            e.getVersion(),
+                            e.getPreviousHash(),
+                            e.getHash(),
+                            e.getPqcSignature(),
+                            e.getSignatureAlgorithm(),
+                            e.getPayload()
+                    ));
+                }
+            }
+        }
+
+        allTx.sort((a, b) -> b.createdAt().compareTo(a.createdAt()));
+
+        return ResponseEntity.ok(allTx);
+    }
+
+    @Operation(
+            summary = "Get customer dashboard summary",
+            description = "Returns banking overview metrics and recent transactions strictly for the authenticated customer."
+    )
+    @ApiResponse(responseCode = "200", description = "Customer dashboard retrieved successfully")
+    @ApiResponse(responseCode = "401", description = "Missing or invalid Bearer JWT token")
+    @GetMapping("/customer-summary")
+    public ResponseEntity<DTOs.CustomerDashboardResponse> getCustomerSummary() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated()) {
+            throw new AccessDeniedException("Full authentication is required to access this resource.");
+        }
+
+        String username = auth.getName();
+        List<com.bank.ledger.readmodel.AccountBalanceEntity> accounts = accountBalanceRepository.findByOwnerNameIgnoreCase(username);
+
+        BigDecimal totalBalance = accounts.stream()
+                .map(com.bank.ledger.readmodel.AccountBalanceEntity::getBalance)
+                .filter(java.util.Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        ResponseEntity<List<DTOs.UserTransactionResponse>> txResp = getUserTransactions(null);
+        List<DTOs.UserTransactionResponse> allTx = txResp.getBody() != null ? txResp.getBody() : List.of();
+
+        BigDecimal totalInflow = BigDecimal.ZERO;
+        BigDecimal totalOutflow = BigDecimal.ZERO;
+        for (DTOs.UserTransactionResponse tx : allTx) {
+            BigDecimal amt = tx.amount() != null ? tx.amount() : BigDecimal.ZERO;
+            if (amt.compareTo(BigDecimal.ZERO) > 0) {
+                totalInflow = totalInflow.add(amt);
+            } else if (amt.compareTo(BigDecimal.ZERO) < 0) {
+                totalOutflow = totalOutflow.add(amt.abs());
+            }
+        }
+
+        BigDecimal netCashFlow = totalInflow.subtract(totalOutflow);
+        List<DTOs.UserTransactionResponse> recentTx = allTx.stream().limit(8).toList();
+
+        return ResponseEntity.ok(new DTOs.CustomerDashboardResponse(
+                totalBalance,
+                accounts.size(),
+                totalInflow,
+                totalOutflow,
+                netCashFlow,
+                recentTx,
+                java.time.Instant.now()
+        ));
     }
 
     private void validateAccountOwnership(String accountOwnerName) {

@@ -139,6 +139,34 @@ public class DTOs {
             java.util.List<DashboardDailyChartItem> chartData,
             java.time.Instant generatedAt
     ) {}
+    public record UserTransactionResponse(
+            String id,
+            String accountId,
+            String ownerName,
+            String eventType,
+            String typeLabel,
+            BigDecimal amount,
+            BigDecimal runningBalance,
+            java.time.Instant createdAt,
+            String description,
+            long version,
+            String previousHash,
+            String hash,
+            String pqcSignature,
+            String signatureAlgorithm,
+            String rawPayload
+    ) {}
+
+    public record CustomerDashboardResponse(
+            BigDecimal totalCombinedBalance,
+            long totalAccounts,
+            BigDecimal totalInflow,
+            BigDecimal totalOutflow,
+            BigDecimal netCashFlow,
+            java.util.List<UserTransactionResponse> recentTransactions,
+            java.time.Instant generatedAt
+    ) {}
+
     public record ErrorResponse(int status, String error, String message, long timestamp) {}
 }
 
